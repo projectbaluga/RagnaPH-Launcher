@@ -10,7 +10,7 @@ namespace RagnaPHPatcher
     {
         /// <summary>
         /// Applies a Thor patch archive by extracting its contents alongside the specified GRF file.
-        /// Files placed next to the GRF override existing game resources.
+        /// Files placed next to the GRF override existing game resources. The Thor archive is deleted after extraction.
         /// </summary>
         /// <param name="thorFilePath">Path to the downloaded Thor archive.</param>
         /// <param name="grfFilePath">Path to the client GRF file. Its directory is used as the extraction target.</param>
