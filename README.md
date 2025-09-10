@@ -2,7 +2,7 @@
 
 ![RagnaPH Logo](RagnaPH%20Launcher/Images/logo.png)
 
-[![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.7.2-512BD4?logo=.net)](https://dotnet.microsoft.com/)
+[![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4?logo=.net)](https://dotnet.microsoft.com/)
 
 A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displays the latest news, keeps the game files up to date, and launches the client with a single click.
 
@@ -20,7 +20,7 @@ A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displ
 ### Prerequisites
 
 - Windows with [Visual Studio](https://visualstudio.microsoft.com/) 2019 or later
-- **.NET Framework 4.7.2**
+- **.NET Framework 4.8**
 - Optional: [Mono](https://www.mono-project.com/) for experimental builds on other platforms
 
 ### Build & Run
