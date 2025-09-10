@@ -12,6 +12,7 @@ A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displ
 - **Automatic Patching** – Downloads a remote configuration and sequential patch list to keep the game client current.
 - **Resilient Configuration** – Loads settings from a centralized URL and warns before falling back to a local `patchsettings.inf` if the remote file is unavailable.
 - **Thor Archive Support** – Detects downloaded `.thor` patch archives and merges their contents into `data.grf`.
+- **Command-line Patching** – Download and apply `.thor` patches directly using `--apply-patch`, removing the archive afterward.
 - **Progress Feedback** – Visual progress bar and status text during patching.
 - **One‑Click Launch** – Starts `RagnaPH.exe` directly from the launcher once patching is complete.
 - **Fail‑Safe Messaging** – Gracefully reports errors such as missing files, patch failures, or maintenance notices.
@@ -33,6 +34,16 @@ A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displ
 2. Open the solution file `RagnaPH Launcher.sln` in Visual Studio.
 3. Restore NuGet packages and build the project.
 4. Run the generated executable or press <kbd>F5</kbd> in Visual Studio.
+
+### Command-Line Patching
+
+Download and apply a single `.thor` archive without opening the launcher UI:
+
+```bash
+RagnaPH\ Launcher.exe --apply-patch <patch-url> <path/to/data.grf>
+```
+
+The launcher downloads the patch to a temporary file, extracts it over the specified GRF directory, and then deletes the patch archive. It relies on the bundled **SharpCompress 0.40.0.0** library to extract the archive and merge it with the given GRF.
 
 ## 🛠️ Configuration
 
