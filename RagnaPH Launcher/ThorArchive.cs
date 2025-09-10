@@ -50,14 +50,14 @@ namespace RagnaPHPatcher
             using (var br = new BinaryReader(fs, Encoding.ASCII, leaveOpen: true))
             {
                 var headerMagic = br.ReadBytes(4);
-                if (headerMagic.Length != 4 || headerMagic[0] != 'T' || headerMagic[1] != 'H' || headerMagic[2] != 'O' || headerMagic[3] != 'R')
-                    throw new InvalidDataException("Invalid THOR file header.");
+                if (headerMagic.Length != 4 || headerMagic[0] != 'A' || headerMagic[1] != 'S' || headerMagic[2] != 'S' || headerMagic[3] != 'F')
+                    throw new InvalidDataException("Invalid .thor file header.");
 
-                // The THOR header contains the offset and size of the zlib payload.
+                // The ASSF header contains the offset and size of the zlib payload.
                 int payloadOffset = br.ReadInt32();
                 int payloadSize = br.ReadInt32();
                 if (payloadOffset < 0 || payloadSize < 0 || payloadOffset + payloadSize > fs.Length)
-                    throw new InvalidDataException("Invalid THOR payload region.");
+                    throw new InvalidDataException("Invalid .thor payload region.");
 
                 fs.Position = payloadOffset;
                 var payload = br.ReadBytes(payloadSize);
@@ -67,7 +67,7 @@ namespace RagnaPHPatcher
                 {
                     var magic = payloadBr.ReadBytes(4);
                     if (magic.Length != 4 || magic[0] != 'A' || magic[1] != 'S' || magic[2] != 'S' || magic[3] != 'F')
-                        throw new InvalidDataException("Invalid THOR payload header.");
+                        throw new InvalidDataException("Invalid ASSF payload header.");
 
                     int compressedSize = payloadBr.ReadInt32();
                     int uncompressedSize = payloadBr.ReadInt32();
