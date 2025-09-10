@@ -10,13 +10,16 @@ namespace RagnaPHPatcher
     /// Thor archive reader for the ASSF format used by traditional Ragnarok patchers.
     /// The file layout is:
     ///
-    /// ["ASSF" magic][compressedSize:int][uncompressedSize:int]
-    ///   [zlibData:byte[compressedSize]]  --> decompresses to:
-    ///     [entryCount:int]
-    ///       repeated entryCount times:
-    ///         [target:byte] (0 = GRF, 1 = file system)
-    ///         [pathLen:int][path:utf8]
-    ///         [dataLen:int][data:byte[dataLen]]
+    /// ["ASSF" magic][payloadOffset:int][payloadSize:int]
+    ///   [other header data ...][payload:byte[payloadSize]]
+    ///     payload contains:
+    ///       ["ASSF" magic][compressedSize:int][uncompressedSize:int]
+    ///         [zlibData:byte[compressedSize]]  --> decompresses to:
+    ///           [entryCount:int]
+    ///             repeated entryCount times:
+    ///               [target:byte] (0 = GRF, 1 = file system)
+    ///               [pathLen:int][path:utf8]
+    ///               [dataLen:int][data:byte[dataLen]]
     ///
     /// The entire entries block is zlib-compressed.  Paths are stored as UTF-8 strings
     /// inside the compressed section.
@@ -56,11 +59,14 @@ namespace RagnaPHPatcher
                 // The ASSF header contains the offset and size of the zlib payload.
                 int payloadOffset = br.ReadInt32();
                 int payloadSize = br.ReadInt32();
-                if (payloadOffset < 0 || payloadSize < 0 || payloadOffset + payloadSize > fs.Length)
+                long payloadEnd = (long)payloadOffset + payloadSize;
+                if (payloadOffset < 0 || payloadSize < 0 || payloadEnd > fs.Length)
                     throw new InvalidDataException("Invalid .thor payload region.");
 
                 fs.Position = payloadOffset;
                 var payload = br.ReadBytes(payloadSize);
+                if (payload.Length != payloadSize)
+                    throw new InvalidDataException("Incomplete .thor payload region.");
 
                 using (var payloadMs = new MemoryStream(payload))
                 using (var payloadBr = new BinaryReader(payloadMs, Encoding.ASCII))
@@ -71,7 +77,14 @@ namespace RagnaPHPatcher
 
                     int compressedSize = payloadBr.ReadInt32();
                     int uncompressedSize = payloadBr.ReadInt32();
+                    long compressedEnd = payloadBr.BaseStream.Position + compressedSize;
+                    if (compressedSize < 0 || uncompressedSize < 0 || compressedEnd > payloadBr.BaseStream.Length)
+                        throw new InvalidDataException("Invalid ASSF payload region.");
+
                     var compressed = payloadBr.ReadBytes(compressedSize);
+                    if (compressed.Length != compressedSize)
+                        throw new InvalidDataException("Incomplete ASSF payload region.");
+
                     var decompressed = DecompressZlib(compressed, uncompressedSize);
 
                     using (var ms = new MemoryStream(decompressed))
