@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net;
 using System.Windows;
@@ -14,10 +14,10 @@ namespace RagnaPH_Launcher
         protected override void OnStartup(StartupEventArgs e)
         {
             // Allow applying patches from the command line without showing the UI.
-            if (e.Args.Length >= 3 && string.Equals(e.Args[0], "--apply-patch", StringComparison.OrdinalIgnoreCase))
+            if (e.Args.Length >= 2 && string.Equals(e.Args[0], "--apply-patch", StringComparison.OrdinalIgnoreCase))
             {
                 var source = e.Args[1];
-                var grfPath = e.Args[2];
+                var grfPath = e.Args.Length >= 3 ? e.Args[2] : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data.grf");
                 var patchPath = source;
 
                 try
@@ -33,7 +33,10 @@ namespace RagnaPH_Launcher
                     if (!string.Equals(Path.GetExtension(patchPath), ".thor", StringComparison.OrdinalIgnoreCase))
                         throw new InvalidDataException("Patch file is not a .thor archive.");
 
-                    ThorPatcher.ApplyPatch(patchPath, grfPath);
+                    var progress = new Progress<ThorPatcher.PatchProgress>(p =>
+                        Console.WriteLine($"[{p.Index}/{p.Count}] {p.Path}"));
+
+                    ThorPatcher.ApplyPatch(patchPath, grfPath, progress);
                     Console.WriteLine("Patch applied successfully.");
                     Environment.ExitCode = 0;
                     try { File.Delete(patchPath); } catch { }
