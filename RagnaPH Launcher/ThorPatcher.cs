@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
 
 namespace RagnaPHPatcher
 {
@@ -26,8 +25,9 @@ namespace RagnaPHPatcher
         }
 
         /// <summary>
-        /// Applies a Thor patch archive by merging its contents into the specified GRF file.
-        /// The patch archive is validated and each file path is normalised to prevent path traversal.
+        /// Applies a Thor patch archive by merging its contents into the specified GRF file
+        /// and writing any file-system targets next to the GRF.  The patch archive is
+        /// validated and each file path is normalised to prevent path traversal.
         /// </summary>
         /// <param name="thorFilePath">Path to the downloaded Thor archive.</param>
         /// <param name="grfFilePath">Path to the client GRF file.</param>
@@ -47,6 +47,8 @@ namespace RagnaPHPatcher
             Directory.CreateDirectory(grfDirectory);
 
             var grf = new SimpleGrf(grfFilePath);
+            // Validate GRF header before attempting to merge so that a bad GRF does not get
+            // overwritten with an empty file.
             grf.Load();
 
             var archive = ThorArchive.Open(thorFilePath);
@@ -54,12 +56,24 @@ namespace RagnaPHPatcher
             for (int i = 0; i < total; i++)
             {
                 var entry = archive.Entries[i];
-                var path = NormalizePath(entry.Path);
-                if (string.IsNullOrEmpty(path))
+                var normalised = NormalizePath(entry.Path);
+                if (string.IsNullOrEmpty(normalised))
                     continue;
 
-                progress?.Report(new PatchProgress(i + 1, total, path));
-                grf.InsertOrReplace(path, entry.Data);
+                progress?.Report(new PatchProgress(i + 1, total, normalised));
+
+                if (entry.TargetIsGrf)
+                {
+                    grf.InsertOrReplace(normalised, entry.Data);
+                }
+                else
+                {
+                    var outPath = Path.Combine(grfDirectory, normalised.Replace('/', Path.DirectorySeparatorChar));
+                    var outDir = Path.GetDirectoryName(outPath);
+                    if (!string.IsNullOrEmpty(outDir))
+                        Directory.CreateDirectory(outDir);
+                    File.WriteAllBytes(outPath, entry.Data);
+                }
             }
 
             grf.Save();
@@ -79,23 +93,39 @@ namespace RagnaPHPatcher
                 }
                 stack.Push(part);
             }
-            return string.Join("/", stack.Reverse());
+            var arr = stack.ToArray();
+            Array.Reverse(arr);
+            return string.Join("/", arr);
         }
 
         /// <summary>
-        /// Minimal Thor archive reader. Thor files contain a small header followed by a standard ZIP archive.
+        /// Thor archive reader for the custom THOR format used by Ragnarok patchers. The file layout is :
+        ///
+        /// ["THOR" magic][entryCount]
+        ///   repeated entryCount times:
+        ///     [target:byte] (0 = GRF, 1 = file system)
+        ///     [pathLen:int][path:utf16]
+        ///     [grfLen:int][grf:utf16]  (optional; empty means default GRF)
+        ///     [isCompressed:byte]
+        ///     [dataLen:int][data:byte[]]
+        ///
+        /// Data blocks may be zlib-compressed.  Paths are stored as UTF-16LE strings.
         /// </summary>
         private sealed class ThorArchive
         {
             internal sealed class ThorEntry
             {
-                public ThorEntry(string path, byte[] data)
+                public ThorEntry(bool targetIsGrf, string path, string grf, byte[] data)
                 {
+                    TargetIsGrf = targetIsGrf;
                     Path = path;
+                    Grf = grf;
                     Data = data;
                 }
 
+                public bool TargetIsGrf { get; }
                 public string Path { get; }
+                public string Grf { get; }
                 public byte[] Data { get; }
             }
 
@@ -108,55 +138,68 @@ namespace RagnaPHPatcher
 
             public static ThorArchive Open(string path)
             {
-                using (var stream = File.OpenRead(path))
+                using (var fs = File.OpenRead(path))
+                using (var br = new BinaryReader(fs, System.Text.Encoding.Unicode))
                 {
-                    var header = new byte[4];
-                    if (stream.Read(header, 0, 4) != 4 || header[0] != 'T' || header[1] != 'H' || header[2] != 'O' || header[3] != 'R')
+                    var magic = br.ReadBytes(4);
+                    if (magic.Length != 4 || magic[0] != 'T' || magic[1] != 'H' || magic[2] != 'O' || magic[3] != 'R')
                         throw new InvalidDataException("Invalid THOR file header.");
 
-                    stream.Seek(0, SeekOrigin.Begin);
-                    long offset = FindZipOffset(stream);
-                    if (offset < 0)
-                        throw new InvalidDataException("ZIP signature not found in THOR file.");
-
-                    stream.Seek(offset, SeekOrigin.Begin);
-                    try
+                    int count = br.ReadInt32();
+                    var entries = new List<ThorEntry>(count);
+                    for (int i = 0; i < count; i++)
                     {
-                        using (var zip = new ZipArchive(stream, ZipArchiveMode.Read))
+                        try
                         {
-                            var entries = new List<ThorEntry>();
-                            foreach (var e in zip.Entries.Where(e => !string.IsNullOrEmpty(e.Name)))
-                            {
-                                using (var es = e.Open())
-                                using (var ms = new MemoryStream())
-                                {
-                                    es.CopyTo(ms);
-                                    entries.Add(new ThorEntry(e.FullName, ms.ToArray()));
-                                }
-                            }
-                            return new ThorArchive(entries);
+                            byte target = br.ReadByte();
+                            int pathLen = br.ReadInt32();
+                            string entryPath = new string(br.ReadChars(pathLen));
+                            int grfLen = br.ReadInt32();
+                            string grfName = grfLen > 0 ? new string(br.ReadChars(grfLen)) : string.Empty;
+                            byte compressed = br.ReadByte();
+                            int dataLen = br.ReadInt32();
+                            byte[] data = br.ReadBytes(dataLen);
+                            if (compressed != 0)
+                                data = DecompressZlib(data);
+                            entries.Add(new ThorEntry(target == 0, entryPath, grfName, data));
+                        }
+                        catch (EndOfStreamException ex)
+                        {
+                            throw new InvalidDataException("Incomplete THOR archive.", ex);
                         }
                     }
-                    catch (InvalidDataException ex)
-                    {
-                        throw new InvalidDataException("Corrupted THOR archive.", ex);
-                    }
+
+                    return new ThorArchive(entries);
                 }
             }
 
-            private static long FindZipOffset(Stream stream)
+            private static byte[] DecompressZlib(byte[] data)
             {
-                const uint signature = 0x04034b50; // PK\x03\x04
-                var buffer = new byte[4];
-                while (stream.Read(buffer, 0, 4) == 4)
+                try
                 {
-                    uint current = (uint)(buffer[0] | (buffer[1] << 8) | (buffer[2] << 16) | (buffer[3] << 24));
-                    if (current == signature)
-                        return stream.Position - 4;
-                    stream.Seek(-3, SeekOrigin.Current);
+                    using (var ms = new MemoryStream(data))
+                    {
+                        if (data.Length > 2 && data[0] == 0x78)
+                        {
+                            // Skip zlib header
+                            ms.ReadByte();
+                            ms.ReadByte();
+                        }
+
+                        using (var ds = new DeflateStream(ms, CompressionMode.Decompress))
+                        using (var outMs = new MemoryStream())
+                        {
+                            ds.CopyTo(outMs);
+                            return outMs.ToArray();
+                        }
+                    }
                 }
-                return -1;
+                catch (InvalidDataException)
+                {
+                    return data; // fallback to original bytes on failure
+                }
             }
         }
     }
 }
+
