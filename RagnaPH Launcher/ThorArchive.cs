@@ -47,41 +47,58 @@ namespace RagnaPHPatcher
         public static ThorArchive Open(string path)
         {
             using (var fs = File.OpenRead(path))
-            using (var br = new BinaryReader(fs, Encoding.ASCII))
+            using (var br = new BinaryReader(fs, Encoding.ASCII, leaveOpen: true))
             {
-                var magic = br.ReadBytes(4);
-                if (magic.Length != 4 || magic[0] != 'A' || magic[1] != 'S' || magic[2] != 'S' || magic[3] != 'F')
+                var headerMagic = br.ReadBytes(4);
+                if (headerMagic.Length != 4 || headerMagic[0] != 'T' || headerMagic[1] != 'H' || headerMagic[2] != 'O' || headerMagic[3] != 'R')
                     throw new InvalidDataException("Invalid THOR file header.");
 
-                int compressedSize = br.ReadInt32();
-                int uncompressedSize = br.ReadInt32();
-                var compressed = br.ReadBytes(compressedSize);
-                var decompressed = DecompressZlib(compressed, uncompressedSize);
+                // The THOR header contains the offset and size of the zlib payload.
+                int payloadOffset = br.ReadInt32();
+                int payloadSize = br.ReadInt32();
+                if (payloadOffset < 0 || payloadSize < 0 || payloadOffset + payloadSize > fs.Length)
+                    throw new InvalidDataException("Invalid THOR payload region.");
 
-                using (var ms = new MemoryStream(decompressed))
-                using (var br2 = new BinaryReader(ms, Encoding.UTF8))
+                fs.Position = payloadOffset;
+                var payload = br.ReadBytes(payloadSize);
+
+                using (var payloadMs = new MemoryStream(payload))
+                using (var payloadBr = new BinaryReader(payloadMs, Encoding.ASCII))
                 {
-                    int count = br2.ReadInt32();
-                    var entries = new List<ThorEntry>(count);
-                    for (int i = 0; i < count; i++)
-                    {
-                        try
-                        {
-                            byte target = br2.ReadByte();
-                            int pathLen = br2.ReadInt32();
-                            var pathBytes = br2.ReadBytes(pathLen);
-                            string entryPath = Encoding.UTF8.GetString(pathBytes);
-                            int dataLen = br2.ReadInt32();
-                            byte[] data = br2.ReadBytes(dataLen);
-                            entries.Add(new ThorEntry(target == 0, entryPath, data));
-                        }
-                        catch (EndOfStreamException ex)
-                        {
-                            throw new InvalidDataException("Incomplete THOR archive.", ex);
-                        }
-                    }
+                    var magic = payloadBr.ReadBytes(4);
+                    if (magic.Length != 4 || magic[0] != 'A' || magic[1] != 'S' || magic[2] != 'S' || magic[3] != 'F')
+                        throw new InvalidDataException("Invalid THOR payload header.");
 
-                    return new ThorArchive(entries);
+                    int compressedSize = payloadBr.ReadInt32();
+                    int uncompressedSize = payloadBr.ReadInt32();
+                    var compressed = payloadBr.ReadBytes(compressedSize);
+                    var decompressed = DecompressZlib(compressed, uncompressedSize);
+
+                    using (var ms = new MemoryStream(decompressed))
+                    using (var br2 = new BinaryReader(ms, Encoding.UTF8))
+                    {
+                        int count = br2.ReadInt32();
+                        var entries = new List<ThorEntry>(count);
+                        for (int i = 0; i < count; i++)
+                        {
+                            try
+                            {
+                                byte target = br2.ReadByte();
+                                int pathLen = br2.ReadInt32();
+                                var pathBytes = br2.ReadBytes(pathLen);
+                                string entryPath = Encoding.UTF8.GetString(pathBytes);
+                                int dataLen = br2.ReadInt32();
+                                byte[] data = br2.ReadBytes(dataLen);
+                                entries.Add(new ThorEntry(target == 0, entryPath, data));
+                            }
+                            catch (EndOfStreamException ex)
+                            {
+                                throw new InvalidDataException("Incomplete THOR archive.", ex);
+                            }
+                        }
+
+                        return new ThorArchive(entries);
+                    }
                 }
             }
         }
@@ -90,14 +107,6 @@ namespace RagnaPHPatcher
         {
             using (var ms = new MemoryStream(data))
             {
-                if (data.Length > 2 && data[0] == 0x78)
-                {
-                    // Skip the two-byte zlib header when present. Some thor files
-                    // include the header while others contain raw deflate data.
-                    ms.ReadByte();
-                    ms.ReadByte();
-                }
-
                 try
                 {
                     using (var ds = new DeflateStream(ms, CompressionMode.Decompress))
