@@ -11,3 +11,5 @@ file_url=https://ragna.ph/patch/
 [Patch]
 # Name of the patch list file to download from file_url.
 PatchList=patchlist.txt
+# Subdirectory under file_url where patch files reside.
+PatchLocation=patches/
