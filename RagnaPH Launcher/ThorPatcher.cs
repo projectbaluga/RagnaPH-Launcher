@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Text;
 
 namespace RagnaPHPatcher
 {
@@ -72,7 +73,10 @@ namespace RagnaPHPatcher
                     var outDir = Path.GetDirectoryName(outPath);
                     if (!string.IsNullOrEmpty(outDir))
                         Directory.CreateDirectory(outDir);
-                    File.WriteAllBytes(outPath, entry.Data);
+                    var tempFile = outPath + ".tmp";
+                    File.WriteAllBytes(tempFile, entry.Data);
+                    File.Copy(tempFile, outPath, true);
+                    try { File.Delete(tempFile); } catch { }
                 }
             }
 
@@ -99,33 +103,33 @@ namespace RagnaPHPatcher
         }
 
         /// <summary>
-        /// Thor archive reader for the custom THOR format used by Ragnarok patchers. The file layout is :
+        /// Thor archive reader for the ASSF format used by traditional Ragnarok
+        /// patchers.  The file layout is:
         ///
-        /// ["THOR" magic][entryCount]
-        ///   repeated entryCount times:
-        ///     [target:byte] (0 = GRF, 1 = file system)
-        ///     [pathLen:int][path:utf16]
-        ///     [grfLen:int][grf:utf16]  (optional; empty means default GRF)
-        ///     [isCompressed:byte]
-        ///     [dataLen:int][data:byte[]]
+        /// ["ASSF" magic][compressedSize:int][uncompressedSize:int]
+        ///   [zlibData:byte[compressedSize]]  --> decompresses to:
+        ///     [entryCount:int]
+        ///       repeated entryCount times:
+        ///         [target:byte] (0 = GRF, 1 = file system)
+        ///         [pathLen:int][path:utf8]
+        ///         [dataLen:int][data:byte[dataLen]]
         ///
-        /// Data blocks may be zlib-compressed.  Paths are stored as UTF-16LE strings.
+        /// The entire entries block is zlib-compressed.  Paths are stored as
+        /// UTF-8 strings inside the compressed section.
         /// </summary>
         private sealed class ThorArchive
         {
             internal sealed class ThorEntry
             {
-                public ThorEntry(bool targetIsGrf, string path, string grf, byte[] data)
+                public ThorEntry(bool targetIsGrf, string path, byte[] data)
                 {
                     TargetIsGrf = targetIsGrf;
                     Path = path;
-                    Grf = grf;
                     Data = data;
                 }
 
                 public bool TargetIsGrf { get; }
                 public string Path { get; }
-                public string Grf { get; }
                 public byte[] Data { get; }
             }
 
@@ -139,41 +143,46 @@ namespace RagnaPHPatcher
             public static ThorArchive Open(string path)
             {
                 using (var fs = File.OpenRead(path))
-                using (var br = new BinaryReader(fs, System.Text.Encoding.Unicode))
+                using (var br = new BinaryReader(fs, Encoding.ASCII))
                 {
                     var magic = br.ReadBytes(4);
-                    if (magic.Length != 4 || magic[0] != 'T' || magic[1] != 'H' || magic[2] != 'O' || magic[3] != 'R')
+                    if (magic.Length != 4 || magic[0] != 'A' || magic[1] != 'S' || magic[2] != 'S' || magic[3] != 'F')
                         throw new InvalidDataException("Invalid THOR file header.");
 
-                    int count = br.ReadInt32();
-                    var entries = new List<ThorEntry>(count);
-                    for (int i = 0; i < count; i++)
-                    {
-                        try
-                        {
-                            byte target = br.ReadByte();
-                            int pathLen = br.ReadInt32();
-                            string entryPath = new string(br.ReadChars(pathLen));
-                            int grfLen = br.ReadInt32();
-                            string grfName = grfLen > 0 ? new string(br.ReadChars(grfLen)) : string.Empty;
-                            byte compressed = br.ReadByte();
-                            int dataLen = br.ReadInt32();
-                            byte[] data = br.ReadBytes(dataLen);
-                            if (compressed != 0)
-                                data = DecompressZlib(data);
-                            entries.Add(new ThorEntry(target == 0, entryPath, grfName, data));
-                        }
-                        catch (EndOfStreamException ex)
-                        {
-                            throw new InvalidDataException("Incomplete THOR archive.", ex);
-                        }
-                    }
+                    int compressedSize = br.ReadInt32();
+                    int uncompressedSize = br.ReadInt32();
+                    var compressed = br.ReadBytes(compressedSize);
+                    var decompressed = DecompressZlib(compressed, uncompressedSize);
 
-                    return new ThorArchive(entries);
+                    using (var ms = new MemoryStream(decompressed))
+                    using (var br2 = new BinaryReader(ms, Encoding.UTF8))
+                    {
+                        int count = br2.ReadInt32();
+                        var entries = new List<ThorEntry>(count);
+                        for (int i = 0; i < count; i++)
+                        {
+                            try
+                            {
+                                byte target = br2.ReadByte();
+                                int pathLen = br2.ReadInt32();
+                                var pathBytes = br2.ReadBytes(pathLen);
+                                string entryPath = Encoding.UTF8.GetString(pathBytes);
+                                int dataLen = br2.ReadInt32();
+                                byte[] data = br2.ReadBytes(dataLen);
+                                entries.Add(new ThorEntry(target == 0, entryPath, data));
+                            }
+                            catch (EndOfStreamException ex)
+                            {
+                                throw new InvalidDataException("Incomplete THOR archive.", ex);
+                            }
+                        }
+
+                        return new ThorArchive(entries);
+                    }
                 }
             }
 
-            private static byte[] DecompressZlib(byte[] data)
+            private static byte[] DecompressZlib(byte[] data, int expectedSize)
             {
                 try
                 {
@@ -187,7 +196,7 @@ namespace RagnaPHPatcher
                         }
 
                         using (var ds = new DeflateStream(ms, CompressionMode.Decompress))
-                        using (var outMs = new MemoryStream())
+                        using (var outMs = new MemoryStream(expectedSize > 0 ? expectedSize : 0))
                         {
                             ds.CopyTo(outMs);
                             return outMs.ToArray();
