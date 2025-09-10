@@ -12,6 +12,8 @@ namespace RagnaPHPatcher
     public partial class MainWindow : Window
     {
         private const string RemoteConfigUrl = "https://ragna.ph/patch/patchsettings.inf";
+        private const string PatchStateFile = "patch.ver";
+        private int lastPatchNumber = 0;
 
         public MainWindow()
         {
@@ -94,6 +96,9 @@ namespace RagnaPHPatcher
             string policyMsg = config.Get("Main", "policy_msg", "Server under maintenance.");
             string fileUrl = config.Get("Main", "file_url", "");
             string patchListFile = config.Get("Patch", "PatchList", "patchlist.txt");
+            string patchLocation = config.Get("Patch", "PatchLocation", "");
+            if (!string.IsNullOrEmpty(patchLocation) && !patchLocation.EndsWith("/"))
+                patchLocation += "/";
 
             if (!allow)
             {
@@ -120,19 +125,48 @@ namespace RagnaPHPatcher
                 return;
             }
 
-            await DownloadPatchFiles(fileUrl, patchFiles);
+            string patchStatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, PatchStateFile);
+            if (File.Exists(patchStatePath))
+            {
+                int.TryParse(File.ReadAllText(patchStatePath).Trim(), out lastPatchNumber);
+            }
+
+            string patchBaseUrl = fileUrl + patchLocation;
+            await DownloadPatchFiles(patchBaseUrl, patchFiles);
         }
 
         private async Task DownloadPatchFiles(string baseUrl, string[] files)
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string patchStatePath = Path.Combine(baseDir, PatchStateFile);
 
             int total = files.Length;
 
             for (int i = 0; i < total; i++)
             {
-                string relativePath = files[i].Trim();
-                if (string.IsNullOrWhiteSpace(relativePath)) continue;
+                string line = files[i].Trim();
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                string[] parts = line.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                int patchNumber = 0;
+                string relativePath;
+                bool hasNumber = parts.Length == 2 && int.TryParse(parts[0], out patchNumber);
+
+                if (hasNumber)
+                {
+                    relativePath = parts[1].Trim();
+                    if (patchNumber <= lastPatchNumber)
+                    {
+                        int skipProgress = (int)(((i + 1) / (double)total) * 100);
+                        PatcherProgressBar.Value = skipProgress;
+                        ProgressText.Text = "Skipping: " + relativePath + " (" + skipProgress + "%)";
+                        continue;
+                    }
+                }
+                else
+                {
+                    relativePath = line;
+                }
 
                 string url = baseUrl + relativePath.Replace("\\", "/");
                 string finalPath = Path.Combine(baseDir, relativePath.Replace("/", "\\"));
@@ -161,6 +195,12 @@ namespace RagnaPHPatcher
                                 "Patch Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                             continue;
                         }
+                    }
+
+                    if (hasNumber)
+                    {
+                        lastPatchNumber = patchNumber;
+                        File.WriteAllText(patchStatePath, lastPatchNumber.ToString());
                     }
                 }
                 catch (Exception ex)
@@ -228,6 +268,9 @@ namespace RagnaPHPatcher
 
             string fileUrl = config.Get("Main", "file_url", "");
             string patchListFile = config.Get("Patch", "PatchList", "patchlist.txt");
+            string patchLocation = config.Get("Patch", "PatchLocation", "");
+            if (!string.IsNullOrEmpty(patchLocation) && !patchLocation.EndsWith("/"))
+                patchLocation += "/";
 
             string[] patchFiles;
             try
@@ -244,19 +287,48 @@ namespace RagnaPHPatcher
                 return;
             }
 
-            await CheckPatchFiles(fileUrl, patchFiles);
+            string patchStatePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, PatchStateFile);
+            if (File.Exists(patchStatePath))
+            {
+                int.TryParse(File.ReadAllText(patchStatePath).Trim(), out lastPatchNumber);
+            }
+
+            string patchBaseUrl = fileUrl + patchLocation;
+            await CheckPatchFiles(patchBaseUrl, patchFiles);
         }
 
         private async Task CheckPatchFiles(string baseUrl, string[] files)
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string patchStatePath = Path.Combine(baseDir, PatchStateFile);
 
             int total = files.Length;
 
             for (int i = 0; i < total; i++)
             {
-                string relativePath = files[i].Trim();
-                if (string.IsNullOrWhiteSpace(relativePath)) continue;
+                string line = files[i].Trim();
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                string[] parts = line.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                int patchNumber = 0;
+                string relativePath;
+                bool hasNumber = parts.Length == 2 && int.TryParse(parts[0], out patchNumber);
+
+                if (hasNumber)
+                {
+                    relativePath = parts[1].Trim();
+                    if (patchNumber <= lastPatchNumber)
+                    {
+                        int skipProgress = (int)(((i + 1) / (double)total) * 100);
+                        PatcherProgressBar.Value = skipProgress;
+                        ProgressText.Text = "Skipping: " + relativePath + " (" + skipProgress + "%)";
+                        continue;
+                    }
+                }
+                else
+                {
+                    relativePath = line;
+                }
 
                 string url = baseUrl + relativePath.Replace("\\", "/");
                 string finalPath = Path.Combine(baseDir, relativePath.Replace("/", "\\"));
@@ -296,6 +368,12 @@ namespace RagnaPHPatcher
                     if (downloaded)
                     {
                         // Optionally report file download
+                    }
+
+                    if (hasNumber)
+                    {
+                        lastPatchNumber = patchNumber;
+                        File.WriteAllText(patchStatePath, lastPatchNumber.ToString());
                     }
                 }
                 catch (Exception ex)
