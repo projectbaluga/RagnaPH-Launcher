@@ -1,8 +1,7 @@
 using System;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
-using SharpCompress.Archives;
-using SharpCompress.Common;
 
 namespace RagnaPHPatcher
 {
@@ -25,13 +24,11 @@ namespace RagnaPHPatcher
 
             Directory.CreateDirectory(baseDir);
 
-            using (var archive = ArchiveFactory.Open(thorFilePath))
+            using (var archive = new ZipArchive(File.OpenRead(thorFilePath), ZipArchiveMode.Read))
             {
-                var options = new ExtractionOptions { ExtractFullPath = true, Overwrite = true };
-
-                foreach (var entry in archive.Entries.Where(e => !e.IsDirectory))
+                foreach (var entry in archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)))
                 {
-                    var relativePath = entry.Key.Replace('/', Path.DirectorySeparatorChar);
+                    var relativePath = entry.FullName.Replace('/', Path.DirectorySeparatorChar);
                     var destinationPath = Path.Combine(baseDir, relativePath);
                     var fullPath = Path.GetFullPath(destinationPath);
 
@@ -42,7 +39,11 @@ namespace RagnaPHPatcher
                     if (!string.IsNullOrEmpty(destinationDir))
                         Directory.CreateDirectory(destinationDir);
 
-                    entry.WriteToFile(fullPath, options);
+                    using (var entryStream = entry.Open())
+                    using (var fileStream = File.Create(fullPath))
+                    {
+                        entryStream.CopyTo(fileStream);
+                    }
                 }
             }
 
