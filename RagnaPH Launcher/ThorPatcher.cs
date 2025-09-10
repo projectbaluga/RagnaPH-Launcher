@@ -58,31 +58,43 @@ namespace RagnaPHPatcher
             grf.Load();
 
             var archive = ThorArchive.Open(thorFilePath);
-            int total = archive.Entries.Count;
-            for (int i = 0; i < total; i++)
+
+            var fsEntries = new List<(string path, byte[] data)>();
+            var grfEntries = new List<(string path, byte[] data)>();
+
+            foreach (var entry in archive.Entries)
             {
-                var entry = archive.Entries[i];
                 var normalised = NormalizePath(entry.Path);
                 if (string.IsNullOrEmpty(normalised))
                     continue;
 
-                progress?.Report(new PatchProgress(i + 1, total, normalised));
-
                 if (entry.TargetIsGrf)
-                {
-                    grf.InsertOrReplace(normalised, entry.Data);
-                }
+                    grfEntries.Add((normalised, entry.Data));
                 else
-                {
-                    var outPath = Path.Combine(grfDirectory, normalised.Replace('/', Path.DirectorySeparatorChar));
-                    var outDir = Path.GetDirectoryName(outPath);
-                    if (!string.IsNullOrEmpty(outDir))
-                        Directory.CreateDirectory(outDir);
-                    var tempFile = outPath + ".tmp";
-                    File.WriteAllBytes(tempFile, entry.Data);
-                    File.Copy(tempFile, outPath, true);
-                    try { File.Delete(tempFile); } catch { }
-                }
+                    fsEntries.Add((normalised, entry.Data));
+            }
+
+            int total = fsEntries.Count + grfEntries.Count;
+            int index = 0;
+
+            foreach (var entry in fsEntries)
+            {
+                progress?.Report(new PatchProgress(++index, total, entry.path));
+
+                var outPath = Path.Combine(grfDirectory, entry.path.Replace('/', Path.DirectorySeparatorChar));
+                var outDir = Path.GetDirectoryName(outPath);
+                if (!string.IsNullOrEmpty(outDir))
+                    Directory.CreateDirectory(outDir);
+                var tempFile = outPath + ".tmp";
+                File.WriteAllBytes(tempFile, entry.data);
+                File.Copy(tempFile, outPath, true);
+                try { File.Delete(tempFile); } catch { }
+            }
+
+            foreach (var entry in grfEntries)
+            {
+                progress?.Report(new PatchProgress(++index, total, entry.path));
+                grf.InsertOrReplace(entry.path, entry.data);
             }
 
             grf.Save();
