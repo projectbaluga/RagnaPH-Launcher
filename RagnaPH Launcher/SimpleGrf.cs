@@ -23,15 +23,22 @@ namespace RagnaPHPatcher
 
         public void Load()
         {
+            _entries.Clear();
             if (!File.Exists(_path))
                 return;
 
             using (var fs = File.OpenRead(_path))
             using (var br = new BinaryReader(fs, Encoding.Unicode))
             {
+                // Validate the file magic.  Older clients may ship a GRF in a different
+                // format which would previously throw and abort the patch.  Instead, treat
+                // an unexpected header as an empty container so the patcher can rebuild it
+                // using the simple format below.
+                if (fs.Length < 16)
+                    return;
                 var magic = br.ReadBytes(4);
                 if (magic.Length != 4 || magic[0] != 'G' || magic[1] != 'R' || magic[2] != 'F' || magic[3] != '2')
-                    throw new InvalidDataException("Invalid GRF file header.");
+                    return;
 
                 br.ReadBytes(8); // reserved
                 int count = br.ReadInt32();
