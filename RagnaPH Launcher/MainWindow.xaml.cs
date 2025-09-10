@@ -166,7 +166,24 @@ namespace RagnaPHPatcher
 
             try
             {
-                Process.Start(gamePath);
+                string safePlayPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SafePlay.exe");
+
+                if (File.Exists(safePlayPath))
+                {
+                    var startInfo = new ProcessStartInfo
+                    {
+                        FileName = safePlayPath,
+                        Arguments = "\"" + gamePath + "\"",
+                        WorkingDirectory = Path.GetDirectoryName(safePlayPath)
+                    };
+
+                    Process.Start(startInfo);
+                }
+                else
+                {
+                    Process.Start(gamePath);
+                }
+
                 this.Close();
             }
             catch (Exception ex)
