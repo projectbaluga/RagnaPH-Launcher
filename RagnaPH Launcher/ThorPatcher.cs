@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Linq;
 using SharpCompress.Archives;
+using SharpCompress.Common;
 
 namespace RagnaPHPatcher
 {
@@ -16,28 +18,31 @@ namespace RagnaPHPatcher
         {
             if (!File.Exists(thorFilePath))
                 throw new FileNotFoundException("Thor file not found", thorFilePath);
-            if (!File.Exists(grfFilePath))
-                throw new FileNotFoundException("GRF file not found", grfFilePath);
 
             var baseDir = Path.GetDirectoryName(grfFilePath);
+            if (string.IsNullOrEmpty(baseDir))
+                throw new ArgumentException("Invalid GRF path", nameof(grfFilePath));
+
+            Directory.CreateDirectory(baseDir);
 
             using (var archive = ArchiveFactory.Open(thorFilePath))
             {
-                foreach (var entry in archive.Entries)
-                {
-                    if (entry.IsDirectory)
-                        continue;
+                var options = new ExtractionOptions { ExtractFullPath = true, Overwrite = true };
 
+                foreach (var entry in archive.Entries.Where(e => !e.IsDirectory))
+                {
                     var relativePath = entry.Key.Replace('/', Path.DirectorySeparatorChar);
                     var destinationPath = Path.Combine(baseDir, relativePath);
-                    var destinationDir = Path.GetDirectoryName(destinationPath);
+                    var fullPath = Path.GetFullPath(destinationPath);
+
+                    if (!fullPath.StartsWith(Path.GetFullPath(baseDir)))
+                        continue;
+
+                    var destinationDir = Path.GetDirectoryName(fullPath);
                     if (!string.IsNullOrEmpty(destinationDir))
                         Directory.CreateDirectory(destinationDir);
 
-                    using (var destStream = File.Open(destinationPath, FileMode.Create, FileAccess.Write))
-                    {
-                        entry.WriteTo(destStream);
-                    }
+                    entry.WriteToFile(fullPath, options);
                 }
             }
 
