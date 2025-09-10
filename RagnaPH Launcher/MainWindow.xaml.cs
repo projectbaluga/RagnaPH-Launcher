@@ -182,12 +182,13 @@ namespace RagnaPHPatcher
                         File.WriteAllBytes(finalPath, data);
                     }
 
-                    if (Path.GetExtension(finalPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(Path.GetExtension(finalPath), ".thor", StringComparison.OrdinalIgnoreCase))
                     {
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
                             ThorPatcher.ApplyPatch(finalPath, grfPath);
+                            File.Delete(finalPath);
                         }
                         catch (Exception ex)
                         {
@@ -350,12 +351,13 @@ namespace RagnaPHPatcher
                         downloaded = true;
                     }
 
-                    if (Path.GetExtension(finalPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(Path.GetExtension(finalPath), ".thor", StringComparison.OrdinalIgnoreCase))
                     {
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
                             ThorPatcher.ApplyPatch(finalPath, grfPath);
+                            File.Delete(finalPath);
                         }
                         catch (Exception ex)
                         {
