@@ -38,6 +38,12 @@ namespace RagnaPHPatcher
             if (!File.Exists(thorFilePath))
                 throw new FileNotFoundException("Thor file not found", thorFilePath);
 
+            // Ensure we are dealing with a thor archive.  This mirrors the check done by
+            // the command-line entry point so that callers using the library directly
+            // also benefit from the validation.
+            if (!string.Equals(Path.GetExtension(thorFilePath), ".thor", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Patch file is not a .thor archive.");
+
             if (string.IsNullOrWhiteSpace(grfFilePath))
                 throw new ArgumentException("Invalid GRF path", nameof(grfFilePath));
 
@@ -184,17 +190,18 @@ namespace RagnaPHPatcher
 
             private static byte[] DecompressZlib(byte[] data, int expectedSize)
             {
-                try
+                using (var ms = new MemoryStream(data))
                 {
-                    using (var ms = new MemoryStream(data))
+                    if (data.Length > 2 && data[0] == 0x78)
                     {
-                        if (data.Length > 2 && data[0] == 0x78)
-                        {
-                            // Skip zlib header
-                            ms.ReadByte();
-                            ms.ReadByte();
-                        }
+                        // Skip the two-byte zlib header when present.  Some thor files
+                        // include the header while others contain raw deflate data.
+                        ms.ReadByte();
+                        ms.ReadByte();
+                    }
 
+                    try
+                    {
                         using (var ds = new DeflateStream(ms, CompressionMode.Decompress))
                         using (var outMs = new MemoryStream(expectedSize > 0 ? expectedSize : 0))
                         {
@@ -202,10 +209,12 @@ namespace RagnaPHPatcher
                             return outMs.ToArray();
                         }
                     }
-                }
-                catch (InvalidDataException)
-                {
-                    return data; // fallback to original bytes on failure
+                    catch (InvalidDataException ex)
+                    {
+                        // Surface decompression failures to the caller so that invalid
+                        // archives are rejected rather than partially processed.
+                        throw new InvalidDataException("Failed to decompress THOR archive payload.", ex);
+                    }
                 }
             }
         }
