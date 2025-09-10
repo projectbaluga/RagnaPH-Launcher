@@ -58,7 +58,8 @@ namespace RagnaPHPatcher
             if (!string.IsNullOrEmpty(dir))
                 Directory.CreateDirectory(dir);
 
-            using (var fs = File.Create(_path))
+            string tempPath = _path + ".tmp";
+            using (var fs = File.Create(tempPath))
             using (var bw = new BinaryWriter(fs, Encoding.Unicode))
             {
                 bw.Write(new byte[] { (byte)'G', (byte)'R', (byte)'F', (byte)'2' });
@@ -72,6 +73,9 @@ namespace RagnaPHPatcher
                     bw.Write(entry.Data);
                 }
             }
+
+            File.Copy(tempPath, _path, true);
+            try { File.Delete(tempPath); } catch { }
         }
     }
 }
