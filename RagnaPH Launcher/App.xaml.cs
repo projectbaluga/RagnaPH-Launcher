@@ -30,22 +30,25 @@ namespace RagnaPH_Launcher
                             client.DownloadFile(uri, patchPath);
                     }
 
-                    ThorPatcher.ApplyPatch(patchPath, grfPath);
-                    Environment.ExitCode = 0;
+                    if (!ThorPatcher.IsThorArchive(patchPath))
+                        throw new InvalidDataException("Invalid THOR archive.");
+
+                    if (ThorPatcher.ApplyPatch(patchPath, grfPath))
+                    {
+                        Console.WriteLine("Patch applied successfully.");
+                        if (File.Exists(patchPath))
+                            File.Delete(patchPath);
+                        Environment.ExitCode = 0;
+                    }
+                    else
+                    {
+                        Environment.ExitCode = 1;
+                    }
                 }
                 catch (Exception ex)
                 {
                     Console.Error.WriteLine($"Failed applying thor patch: {source}\n{ex.Message}");
                     Environment.ExitCode = 1;
-                }
-                finally
-                {
-                    try
-                    {
-                        if (File.Exists(patchPath))
-                            File.Delete(patchPath);
-                    }
-                    catch { }
                 }
 
                 Shutdown();

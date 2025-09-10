@@ -184,10 +184,18 @@ namespace RagnaPHPatcher
 
                     if (Path.GetExtension(finalPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
                     {
+                        if (!ThorPatcher.IsThorArchive(finalPath))
+                        {
+                            MessageBox.Show("Downloaded file is not a valid thor archive: " + relativePath,
+                                "Patch Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            continue;
+                        }
+
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
-                            ThorPatcher.ApplyPatch(finalPath, grfPath);
+                            if (ThorPatcher.ApplyPatch(finalPath, grfPath))
+                                File.Delete(finalPath);
                         }
                         catch (Exception ex)
                         {
@@ -352,10 +360,18 @@ namespace RagnaPHPatcher
 
                     if (Path.GetExtension(finalPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
                     {
+                        if (!ThorPatcher.IsThorArchive(finalPath))
+                        {
+                            MessageBox.Show("Downloaded file is not a valid thor archive: " + relativePath,
+                                "Check Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            continue;
+                        }
+
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
-                            ThorPatcher.ApplyPatch(finalPath, grfPath);
+                            if (ThorPatcher.ApplyPatch(finalPath, grfPath))
+                                File.Delete(finalPath);
                         }
                         catch (Exception ex)
                         {
