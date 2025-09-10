@@ -11,6 +11,8 @@ namespace RagnaPHPatcher
 {
     public partial class MainWindow : Window
     {
+        private const string RemoteConfigUrl = "https://ragna.ph/patch/patchsettings.inf";
+
         public MainWindow()
         {
             InitializeComponent();
@@ -51,22 +53,41 @@ namespace RagnaPHPatcher
             }
         }
 
-        private async void StartPatching()
+        private async Task<IniFile> LoadConfig()
         {
-            IniFile config;
-
             try
             {
-                WebClient wc = new WebClient();
-                string iniContent = await Task.Run(() => wc.DownloadString("https://bojexgames.com/patcher/config.ini"));
-                string[] lines = iniContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-                config = new IniFile(lines);
+                using (WebClient wc = new WebClient())
+                {
+                    string iniContent = await wc.DownloadStringTaskAsync(new Uri(RemoteConfigUrl));
+                    string[] lines = iniContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                    return new IniFile(lines);
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Failed to load remote config:\n" + ex.Message, "Config Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
+                string localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "patchsettings.inf");
+                if (File.Exists(localPath))
+                {
+                    MessageBox.Show("Remote config unavailable, using local patchsettings.inf.", "Config Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    string[] lines = File.ReadAllLines(localPath);
+                    return new IniFile(lines);
+                }
+
+                MessageBox.Show(
+                    "Missing patch settings file. The patch system may not function correctly.\n" + ex.Message,
+                    "Config Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return null;
             }
+        }
+
+        private async void StartPatching()
+        {
+            IniFile config = await LoadConfig();
+            if (config == null)
+                return;
 
             bool allow = config.Get("Main", "allow", "false").ToLower() == "true";
             bool forceStart = config.Get("Main", "Force_Start", "false").ToLower() == "true";
@@ -87,9 +108,11 @@ namespace RagnaPHPatcher
             string[] patchFiles;
             try
             {
-                WebClient wc = new WebClient();
-                string patchListContent = await Task.Run(() => wc.DownloadString(fileUrl + patchListFile));
-                patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                using (WebClient wc = new WebClient())
+                {
+                    string patchListContent = await wc.DownloadStringTaskAsync(new Uri(fileUrl + patchListFile));
+                    patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                }
             }
             catch (Exception ex)
             {
@@ -121,7 +144,7 @@ namespace RagnaPHPatcher
 
                     using (WebClient wc = new WebClient())
                     {
-                        byte[] data = await Task.Run(() => wc.DownloadData(url));
+                        byte[] data = await wc.DownloadDataTaskAsync(new Uri(url));
                         File.WriteAllBytes(finalPath, data);
                     }
 
@@ -199,20 +222,9 @@ namespace RagnaPHPatcher
 
         private async void CheckFileButton_Click(object sender, RoutedEventArgs e)
         {
-            IniFile config;
-
-            try
-            {
-                WebClient wc = new WebClient();
-                string iniContent = await Task.Run(() => wc.DownloadString("https://bojexgames.com/patcher/config.ini"));
-                string[] lines = iniContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-                config = new IniFile(lines);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Failed to load remote config:\n" + ex.Message, "Config Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            IniFile config = await LoadConfig();
+            if (config == null)
                 return;
-            }
 
             string fileUrl = config.Get("Main", "file_url", "");
             string patchListFile = config.Get("Patch", "PatchList", "patchlist.txt");
@@ -220,9 +232,11 @@ namespace RagnaPHPatcher
             string[] patchFiles;
             try
             {
-                WebClient wc = new WebClient();
-                string patchListContent = await Task.Run(() => wc.DownloadString(fileUrl + patchListFile));
-                patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                using (WebClient wc = new WebClient())
+                {
+                    string patchListContent = await wc.DownloadStringTaskAsync(new Uri(fileUrl + patchListFile));
+                    patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                }
             }
             catch (Exception ex)
             {
@@ -257,7 +271,7 @@ namespace RagnaPHPatcher
 
                         using (WebClient wc = new WebClient())
                         {
-                            byte[] data = await Task.Run(() => wc.DownloadData(url));
+                            byte[] data = await wc.DownloadDataTaskAsync(new Uri(url));
                             File.WriteAllBytes(finalPath, data);
                         }
 

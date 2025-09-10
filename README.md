@@ -10,6 +10,7 @@ A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displ
 
 - **Integrated News Feed** – Loads the [RagnaPH news page](https://ragna.ph/?module=news) inside the launcher and strips out navigation and footer elements for a clean look.
 - **Automatic Patching** – Downloads a remote configuration and sequential patch list to keep the game client current.
+- **Resilient Configuration** – Loads settings from a centralized URL and warns before falling back to a local `patchsettings.inf` if the remote file is unavailable.
 - **Thor Archive Support** – Detects downloaded `.thor` patch archives and merges their contents into `data.grf`.
 - **Progress Feedback** – Visual progress bar and status text during patching.
 - **One‑Click Launch** – Starts `RagnaPH.exe` directly from the launcher once patching is complete.
@@ -35,7 +36,7 @@ A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displ
 
 ## 🛠️ Configuration
 
-The launcher downloads its behavior settings from a remote `config.ini`. Key values include:
+By default, the launcher points to `https://ragna.ph/patch/patchsettings.inf` for its behavior settings. If this remote configuration cannot be reached, it warns the user and falls back to a local `patchsettings.inf` file located next to the executable. Key values include:
 
 | Section | Key | Description |
 |--------|-----|-------------|
