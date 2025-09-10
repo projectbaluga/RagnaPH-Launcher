@@ -24,30 +24,53 @@ namespace RagnaPHPatcher
 
             Directory.CreateDirectory(baseDir);
 
-            using (var archive = new ZipArchive(File.OpenRead(thorFilePath), ZipArchiveMode.Read))
+            using (var stream = File.OpenRead(thorFilePath))
             {
-                foreach (var entry in archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)))
+                long offset = FindZipOffset(stream);
+                if (offset < 0)
+                    throw new InvalidDataException("ZIP signature not found in THOR file.");
+
+                stream.Seek(offset, SeekOrigin.Begin);
+                using (var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true))
                 {
-                    var relativePath = entry.FullName.Replace('/', Path.DirectorySeparatorChar);
-                    var destinationPath = Path.Combine(baseDir, relativePath);
-                    var fullPath = Path.GetFullPath(destinationPath);
-
-                    if (!fullPath.StartsWith(Path.GetFullPath(baseDir)))
-                        continue;
-
-                    var destinationDir = Path.GetDirectoryName(fullPath);
-                    if (!string.IsNullOrEmpty(destinationDir))
-                        Directory.CreateDirectory(destinationDir);
-
-                    using (var entryStream = entry.Open())
-                    using (var fileStream = File.Create(fullPath))
+                    foreach (var entry in archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)))
                     {
-                        entryStream.CopyTo(fileStream);
+                        var relativePath = entry.FullName.Replace('/', Path.DirectorySeparatorChar);
+                        var destinationPath = Path.Combine(baseDir, relativePath);
+                        var fullPath = Path.GetFullPath(destinationPath);
+
+                        if (!fullPath.StartsWith(Path.GetFullPath(baseDir)))
+                            continue;
+
+                        var destinationDir = Path.GetDirectoryName(fullPath);
+                        if (!string.IsNullOrEmpty(destinationDir))
+                            Directory.CreateDirectory(destinationDir);
+
+                        using (var entryStream = entry.Open())
+                        using (var fileStream = File.Create(fullPath))
+                        {
+                            entryStream.CopyTo(fileStream);
+                        }
                     }
                 }
             }
 
             File.Delete(thorFilePath);
+        }
+
+        private static long FindZipOffset(Stream stream)
+        {
+            const uint signature = 0x04034b50; // PK\x03\x04
+            var buffer = new byte[4];
+            while (stream.Read(buffer, 0, 4) == 4)
+            {
+                uint current = (uint)(buffer[0] | (buffer[1] << 8) | (buffer[2] << 16) | (buffer[3] << 24));
+                if (current == signature)
+                    return stream.Position - 4;
+                stream.Seek(-3, SeekOrigin.Current);
+            }
+
+            return -1;
         }
     }
 }
