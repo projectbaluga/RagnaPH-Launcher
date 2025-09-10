@@ -33,4 +33,11 @@ public class IniFile
             return data[section][key];
         return defaultValue;
     }
+
+    public Dictionary<string, string> GetSection(string section)
+    {
+        if (data.ContainsKey(section))
+            return new Dictionary<string, string>(data[section]);
+        return new Dictionary<string, string>();
+    }
 }

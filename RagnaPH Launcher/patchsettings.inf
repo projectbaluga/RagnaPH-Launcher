@@ -13,3 +13,7 @@ file_url=https://ragna.ph/patch/
 PatchList=patchlist.txt
 # Subdirectory under file_url where patch files reside.
 PatchLocation=patches/
+
+[PatchServers]
+primary=https://ragna.ph/patch/
+backup=https://mirror.ragna.ph/patch/

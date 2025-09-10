@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -100,6 +101,11 @@ namespace RagnaPHPatcher
             if (!string.IsNullOrEmpty(patchLocation) && !patchLocation.EndsWith("/"))
                 patchLocation += "/";
 
+            var serverSection = config.GetSection("PatchServers");
+            var patchServers = serverSection.Count > 0 ? new List<string>(serverSection.Values) : new List<string>();
+            if (patchServers.Count == 0 && !string.IsNullOrEmpty(fileUrl))
+                patchServers.Add(fileUrl);
+
             if (!allow)
             {
                 MessageBox.Show(policyMsg, "Patch Policy", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -110,18 +116,32 @@ namespace RagnaPHPatcher
                 }
             }
 
-            string[] patchFiles;
-            try
+            string[] patchFiles = null;
+            var patchBaseUrls = new List<string>();
+            foreach (var server in patchServers)
             {
-                using (WebClient wc = new WebClient())
+                try
                 {
-                    string patchListContent = await wc.DownloadStringTaskAsync(new Uri(fileUrl + patchListFile));
-                    patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                    using (WebClient wc = new WebClient())
+                    {
+                        string patchListContent = await wc.DownloadStringTaskAsync(new Uri(server + patchListFile));
+                        patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                        // Build list of patch base URLs using all servers
+                        patchBaseUrls = new List<string>();
+                        foreach (var s in patchServers)
+                            patchBaseUrls.Add(s + patchLocation);
+                        break;
+                    }
+                }
+                catch
+                {
+                    continue;
                 }
             }
-            catch (Exception ex)
+
+            if (patchFiles == null)
             {
-                MessageBox.Show("Failed to download patch list:\n" + ex.Message, "Patch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Failed to download patch list from all servers.", "Patch Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -131,11 +151,10 @@ namespace RagnaPHPatcher
                 int.TryParse(File.ReadAllText(patchStatePath).Trim(), out lastPatchNumber);
             }
 
-            string patchBaseUrl = fileUrl + patchLocation;
-            await DownloadPatchFiles(patchBaseUrl, patchFiles);
+            await DownloadPatchFiles(patchBaseUrls, patchFiles);
         }
 
-        private async Task DownloadPatchFiles(string baseUrl, string[] files)
+        private async Task DownloadPatchFiles(List<string> baseUrls, string[] files)
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string patchStatePath = Path.Combine(baseDir, PatchStateFile);
@@ -168,7 +187,6 @@ namespace RagnaPHPatcher
                     relativePath = line;
                 }
 
-                string url = baseUrl + relativePath.Replace("\\", "/");
                 string finalPath = Path.Combine(baseDir, relativePath.Replace("/", "\\"));
 
                 try
@@ -176,11 +194,28 @@ namespace RagnaPHPatcher
                     string finalDir = Path.GetDirectoryName(finalPath);
                     if (!Directory.Exists(finalDir)) Directory.CreateDirectory(finalDir);
 
-                    using (WebClient wc = new WebClient())
+                    bool downloaded = false;
+                    foreach (var baseUrl in baseUrls)
                     {
-                        byte[] data = await wc.DownloadDataTaskAsync(new Uri(url));
-                        File.WriteAllBytes(finalPath, data);
+                        string url = baseUrl + relativePath.Replace("\\", "/");
+                        try
+                        {
+                            using (WebClient wc = new WebClient())
+                            {
+                                byte[] data = await wc.DownloadDataTaskAsync(new Uri(url));
+                                File.WriteAllBytes(finalPath, data);
+                                downloaded = true;
+                                break;
+                            }
+                        }
+                        catch
+                        {
+                            continue;
+                        }
                     }
+
+                    if (!downloaded)
+                        throw new Exception("All patch servers failed");
 
                     if (Path.GetExtension(finalPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
                     {
@@ -272,18 +307,36 @@ namespace RagnaPHPatcher
             if (!string.IsNullOrEmpty(patchLocation) && !patchLocation.EndsWith("/"))
                 patchLocation += "/";
 
-            string[] patchFiles;
-            try
+            var serverSection = config.GetSection("PatchServers");
+            var patchServers = serverSection.Count > 0 ? new List<string>(serverSection.Values) : new List<string>();
+            if (patchServers.Count == 0 && !string.IsNullOrEmpty(fileUrl))
+                patchServers.Add(fileUrl);
+
+            string[] patchFiles = null;
+            var patchBaseUrls = new List<string>();
+            foreach (var server in patchServers)
             {
-                using (WebClient wc = new WebClient())
+                try
                 {
-                    string patchListContent = await wc.DownloadStringTaskAsync(new Uri(fileUrl + patchListFile));
-                    patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                    using (WebClient wc = new WebClient())
+                    {
+                        string patchListContent = await wc.DownloadStringTaskAsync(new Uri(server + patchListFile));
+                        patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                        patchBaseUrls = new List<string>();
+                        foreach (var s in patchServers)
+                            patchBaseUrls.Add(s + patchLocation);
+                        break;
+                    }
+                }
+                catch
+                {
+                    continue;
                 }
             }
-            catch (Exception ex)
+
+            if (patchFiles == null)
             {
-                MessageBox.Show("Failed to download patch list:\n" + ex.Message, "Check Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Failed to download patch list from all servers.", "Check Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -293,11 +346,10 @@ namespace RagnaPHPatcher
                 int.TryParse(File.ReadAllText(patchStatePath).Trim(), out lastPatchNumber);
             }
 
-            string patchBaseUrl = fileUrl + patchLocation;
-            await CheckPatchFiles(patchBaseUrl, patchFiles);
+            await CheckPatchFiles(patchBaseUrls, patchFiles);
         }
 
-        private async Task CheckPatchFiles(string baseUrl, string[] files)
+        private async Task CheckPatchFiles(List<string> baseUrls, string[] files)
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string patchStatePath = Path.Combine(baseDir, PatchStateFile);
@@ -330,7 +382,6 @@ namespace RagnaPHPatcher
                     relativePath = line;
                 }
 
-                string url = baseUrl + relativePath.Replace("\\", "/");
                 string finalPath = Path.Combine(baseDir, relativePath.Replace("/", "\\"));
 
                 try
@@ -341,13 +392,27 @@ namespace RagnaPHPatcher
                         string finalDir = Path.GetDirectoryName(finalPath);
                         if (!Directory.Exists(finalDir)) Directory.CreateDirectory(finalDir);
 
-                        using (WebClient wc = new WebClient())
+                        foreach (var baseUrl in baseUrls)
                         {
-                            byte[] data = await wc.DownloadDataTaskAsync(new Uri(url));
-                            File.WriteAllBytes(finalPath, data);
+                            string url = baseUrl + relativePath.Replace("\\", "/");
+                            try
+                            {
+                                using (WebClient wc = new WebClient())
+                                {
+                                    byte[] data = await wc.DownloadDataTaskAsync(new Uri(url));
+                                    File.WriteAllBytes(finalPath, data);
+                                    downloaded = true;
+                                    break;
+                                }
+                            }
+                            catch
+                            {
+                                continue;
+                            }
                         }
 
-                        downloaded = true;
+                        if (!downloaded)
+                            throw new Exception("All patch servers failed");
                     }
 
                     if (Path.GetExtension(finalPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
