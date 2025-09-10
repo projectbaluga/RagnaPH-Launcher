@@ -19,6 +19,7 @@ namespace RagnaPH_Launcher
                 var source = e.Args[1];
                 var grfPath = e.Args.Length >= 3 ? e.Args[2] : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data.grf");
                 var patchPath = source;
+                bool downloaded = false;
 
                 try
                 {
@@ -28,6 +29,7 @@ namespace RagnaPH_Launcher
                         patchPath = Path.Combine(Path.GetTempPath(), Path.GetFileName(uri.LocalPath));
                         using (var client = new WebClient())
                             client.DownloadFile(uri, patchPath);
+                        downloaded = true;
                     }
 
                     if (!string.Equals(Path.GetExtension(patchPath), ".thor", StringComparison.OrdinalIgnoreCase))
@@ -39,7 +41,10 @@ namespace RagnaPH_Launcher
                     ThorPatcher.ApplyPatch(patchPath, grfPath, progress);
                     Console.WriteLine("Patch applied successfully.");
                     Environment.ExitCode = 0;
-                    try { File.Delete(patchPath); } catch { }
+                    if (downloaded)
+                    {
+                        try { File.Delete(patchPath); } catch { }
+                    }
                 }
                 catch (Exception ex)
                 {
