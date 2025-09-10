@@ -43,7 +43,7 @@ Download and apply a single `.thor` archive without opening the launcher UI:
 RagnaPH\ Launcher.exe --apply-patch <patch-url> <path/to/data.grf>
 ```
 
-The launcher downloads the patch to a temporary file, extracts it over the specified GRF directory, and deletes the patch archive only if the patch is applied successfully. It relies on the bundled **SharpCompress 0.40.0.0** library to extract the archive and merge it with the given GRF.
+The launcher downloads the patch to a temporary file, merges its contents into the specified GRF directory using the built‑in **ThorArchive** parser and **SimpleGrf** merger, and deletes the patch archive only after a successful apply.
 
 ## 🛠️ Configuration
 
