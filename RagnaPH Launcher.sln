@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35327.3
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RagnaPH Launcher", "RagnaPH Launcher\RagnaPH Launcher.csproj", "{E8CD799F-A814-4B91-8163-59385F706EBA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E8CD799F-A814-4B91-8163-59385F706EBA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E8CD799F-A814-4B91-8163-59385F706EBA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E8CD799F-A814-4B91-8163-59385F706EBA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E8CD799F-A814-4B91-8163-59385F706EBA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3A257551-0AC6-44D8-8BD4-608E719D22A8}
+	EndGlobalSection
+EndGlobal
