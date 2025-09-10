@@ -124,6 +124,21 @@ namespace RagnaPHPatcher
                         byte[] data = await Task.Run(() => wc.DownloadData(url));
                         File.WriteAllBytes(finalPath, data);
                     }
+
+                    if (Path.GetExtension(finalPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            string grfPath = Path.Combine(baseDir, "data.grf");
+                            ThorPatcher.ApplyPatch(finalPath, grfPath);
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show("Failed applying thor patch: " + relativePath + "\n" + ex.Message,
+                                "Patch Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            continue;
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -165,9 +180,105 @@ namespace RagnaPHPatcher
             this.Close();
         }
 
-        private void CheckFileButton_Click(object sender, RoutedEventArgs e)
+        private async void CheckFileButton_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("File check not implemented yet.", "Info", MessageBoxButton.OK, MessageBoxImage.Information);
+            IniFile config;
+
+            try
+            {
+                WebClient wc = new WebClient();
+                string iniContent = await Task.Run(() => wc.DownloadString("https://bojexgames.com/patcher/config.ini"));
+                string[] lines = iniContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                config = new IniFile(lines);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Failed to load remote config:\n" + ex.Message, "Config Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            string fileUrl = config.Get("Main", "file_url", "");
+            string patchListFile = config.Get("Patch", "PatchList", "patchlist.txt");
+
+            string[] patchFiles;
+            try
+            {
+                WebClient wc = new WebClient();
+                string patchListContent = await Task.Run(() => wc.DownloadString(fileUrl + patchListFile));
+                patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Failed to download patch list:\n" + ex.Message, "Check Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            await CheckPatchFiles(fileUrl, patchFiles);
+        }
+
+        private async Task CheckPatchFiles(string baseUrl, string[] files)
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+
+            int total = files.Length;
+
+            for (int i = 0; i < total; i++)
+            {
+                string relativePath = files[i].Trim();
+                if (string.IsNullOrWhiteSpace(relativePath)) continue;
+
+                string url = baseUrl + relativePath.Replace("\\", "/");
+                string finalPath = Path.Combine(baseDir, relativePath.Replace("/", "\\"));
+
+                try
+                {
+                    bool downloaded = false;
+                    if (!File.Exists(finalPath))
+                    {
+                        string finalDir = Path.GetDirectoryName(finalPath);
+                        if (!Directory.Exists(finalDir)) Directory.CreateDirectory(finalDir);
+
+                        using (WebClient wc = new WebClient())
+                        {
+                            byte[] data = await Task.Run(() => wc.DownloadData(url));
+                            File.WriteAllBytes(finalPath, data);
+                        }
+
+                        downloaded = true;
+                    }
+
+                    if (Path.GetExtension(finalPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            string grfPath = Path.Combine(baseDir, "data.grf");
+                            ThorPatcher.ApplyPatch(finalPath, grfPath);
+                        }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show("Failed applying thor patch: " + relativePath + "\n" + ex.Message,
+                                "Check Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            continue;
+                        }
+                    }
+
+                    if (downloaded)
+                    {
+                        // Optionally report file download
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Failed checking: " + relativePath + "\n" + ex.Message, "Check Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    continue;
+                }
+
+                int progress = (int)(((i + 1) / (double)total) * 100);
+                PatcherProgressBar.Value = progress;
+                ProgressText.Text = "Checking: " + relativePath + " (" + progress + "%)";
+            }
+
+            ProgressText.Text = "File check complete.";
         }
 
         private void Window_MouseDown(object sender, MouseButtonEventArgs e)

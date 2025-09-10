@@ -10,6 +10,7 @@ A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displ
 
 - **Integrated News Feed** – Loads the [RagnaPH news page](https://ragna.ph/?module=news) inside the launcher and strips out navigation and footer elements for a clean look.
 - **Automatic Patching** – Downloads a remote configuration and sequential patch list to keep the game client current.
+- **Thor Archive Support** – Detects downloaded `.thor` patch archives and merges their contents into `data.grf`.
 - **Progress Feedback** – Visual progress bar and status text during patching.
 - **One‑Click Launch** – Starts `RagnaPH.exe` directly from the launcher once patching is complete.
 - **Fail‑Safe Messaging** – Gracefully reports errors such as missing files, patch failures, or maintenance notices.
