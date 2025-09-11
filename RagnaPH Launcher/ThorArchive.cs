@@ -53,16 +53,25 @@ namespace RagnaPHPatcher
             using (var br = new BinaryReader(fs, Encoding.ASCII, leaveOpen: true))
             {
                 var headerMagic = br.ReadBytes(4);
-                if (headerMagic.Length != 4 || headerMagic[0] != 'A' || headerMagic[1] != 'S' || headerMagic[2] != 'S' || headerMagic[3] != 'F')
+                if (headerMagic.Length != 4 || headerMagic[0] != 'A' || headerMagic[1] != 'S' ||
+                    headerMagic[2] != 'S' || headerMagic[3] != 'F')
                     throw new InvalidDataException("Invalid .thor file header.");
 
-                // The ASSF header contains the offset and size of the zlib payload.
-                int payloadOffset = br.ReadInt32();
-                int payloadSize = br.ReadInt32();
+                // The ASSF header stores the payload offset and size as little-endian Int32 values.
+                var headerInts = br.ReadBytes(8);
+                if (headerInts.Length != 8)
+                    throw new InvalidDataException("Incomplete .thor file header.");
+
+                int payloadOffset = headerInts[0] | (headerInts[1] << 8) |
+                                    (headerInts[2] << 16) | (headerInts[3] << 24);
+                int payloadSize = headerInts[4] | (headerInts[5] << 8) |
+                                   (headerInts[6] << 16) | (headerInts[7] << 24);
+
                 long payloadEnd = (long)payloadOffset + payloadSize;
                 if (payloadOffset < 0 || payloadSize < 0 || payloadEnd > fs.Length)
                     throw new InvalidDataException("Invalid .thor payload region.");
 
+                // Read only the specified payload slice before decompressing.
                 fs.Position = payloadOffset;
                 var payload = br.ReadBytes(payloadSize);
                 if (payload.Length != payloadSize)
@@ -118,7 +127,11 @@ namespace RagnaPHPatcher
 
         private static byte[] DecompressZlib(byte[] data, int expectedSize)
         {
-            using (var ms = new MemoryStream(data))
+            // Zlib streams start with a two byte header and end with a four byte Adler32 checksum.
+            if (data.Length < 6)
+                throw new InvalidDataException("Incomplete zlib payload.");
+
+            using (var ms = new MemoryStream(data, 2, data.Length - 6))
             {
                 try
                 {
