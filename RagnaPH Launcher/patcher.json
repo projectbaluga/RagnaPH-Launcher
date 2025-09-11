@@ -1,0 +1,6 @@
+{
+  "PatchServers": ["https://example.com/patches/"] ,
+  "PatchList": "patches.txt",
+  "PatchDirectory": "patches",
+  "CacheFile": "patchcache.txt"
+}
