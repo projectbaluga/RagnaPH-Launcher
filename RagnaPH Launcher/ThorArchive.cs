@@ -122,82 +122,124 @@ namespace RagnaPHPatcher
             const int MinimalRecordSize = 8; // pathLen + dataLen
             var entries = new List<ThorEntry>();
 
-            using (var ms = new MemoryStream(data, writable: false))
-            using (var br = new BinaryReader(ms, Encoding.UTF8, leaveOpen: true))
+            int totalLen = data.Length;
+            int pos = 0;
+
+            // Detect layout variant by peeking first Int32
+            bool variantB = false;
+            if (totalLen >= 4)
             {
-                int totalLen = data.Length;
+                int firstInt = BitConverter.ToInt32(data, 0);
+                if (firstInt >= 0 && (long)firstInt * MinimalRecordSize + 4 <= totalLen)
+                    variantB = true;
+            }
 
-                // Detect layout variant by peeking first Int32
-                bool variantB = false;
-                if (totalLen >= 4)
+            if (variantB)
+            {
+                if (totalLen < 4)
+                    throw new InvalidDataException("missing entry count");
+                int count = BitConverter.ToInt32(data, 0);
+                pos = 4;
+                for (int i = 0; i < count; i++)
                 {
-                    int firstInt = BitConverter.ToInt32(data, 0);
-                    if (firstInt >= 0 && (long)firstInt * MinimalRecordSize + 4 <= totalLen)
-                        variantB = true;
+                    if (!ReadEntry(data, ref pos, totalLen, entries))
+                        throw new InvalidDataException("unexpected end of entries");
                 }
-
-                if (variantB)
+            }
+            else
+            {
+                while (pos < totalLen)
                 {
-                    int count = br.ReadInt32();
-                    for (int i = 0; i < count; i++)
-                        ReadEntry(br, entries, totalLen);
-                }
-                else
-                {
-                    while (ms.Position < ms.Length)
-                        ReadEntry(br, entries, totalLen);
+                    if (!ReadEntry(data, ref pos, totalLen, entries))
+                        break; // trailing zeros allowed
                 }
             }
 
             return entries;
         }
 
-        private static void ReadEntry(BinaryReader br, List<ThorEntry> entries, int totalLen)
+        private static bool ReadEntry(byte[] buffer, ref int pos, int totalLen, List<ThorEntry> entries)
         {
-            var ms = br.BaseStream;
-
-            long remaining = totalLen - ms.Position;
+            int remaining = totalLen - pos;
             if (remaining < 8)
-                throw new InvalidDataException("entry exceeds remaining bytes");
+                return false; // trailing zeros allowed
 
-            int pathLen = br.ReadInt32();
-            int dataLen = br.ReadInt32();
+            int rawPathLen = BitConverter.ToInt32(buffer, pos);
+            int dataLen = BitConverter.ToInt32(buffer, pos + 4);
 
-            if (pathLen < 0 || dataLen < 0)
-                throw new InvalidDataException("entry length negative");
+            int header = 8;
+            int pathLen = rawPathLen;
 
-            remaining = totalLen - ms.Position;
-            if (remaining < pathLen + dataLen)
-                throw new InvalidDataException("entry exceeds remaining bytes");
+            // Default interpretation
+            bool success = pathLen >= 0 && dataLen >= 0 &&
+                           (long)pos + header + pathLen + dataLen <= totalLen;
 
-            bool hasFlags = remaining >= pathLen + dataLen + 4;
-            if (hasFlags)
+            // Fallbacks for negative lengths
+            if (!success && (rawPathLen < 0 || dataLen < 0))
             {
-                // Safe to read because we verified remaining
-                br.ReadInt32();
+                // Try with optional flags
+                if (!success && remaining >= 12)
+                {
+                    header = 12;
+                    pathLen = rawPathLen;
+                    success = pathLen >= 0 && dataLen >= 0 &&
+                              (long)pos + header + pathLen + dataLen <= totalLen;
+                }
+
+                // Try null-terminated path without flags
+                if (!success && dataLen >= 0)
+                {
+                    header = 8;
+                    int scanStart = pos + header;
+                    int idx = scanStart;
+                    while (idx < totalLen && buffer[idx] != 0) idx++;
+                    if (idx < totalLen)
+                    {
+                        pathLen = idx - scanStart + 1; // include terminator
+                        success = (long)pos + header + pathLen + dataLen <= totalLen;
+                    }
+                }
+
+                // Try null-terminated path with flags
+                if (!success && remaining >= 12 && dataLen >= 0)
+                {
+                    header = 12;
+                    int scanStart = pos + header;
+                    int idx = scanStart;
+                    while (idx < totalLen && buffer[idx] != 0) idx++;
+                    if (idx < totalLen)
+                    {
+                        pathLen = idx - scanStart + 1; // include terminator
+                        success = (long)pos + header + pathLen + dataLen <= totalLen;
+                    }
+                }
             }
 
-            if (totalLen - ms.Position < pathLen + dataLen)
+            if (!success)
                 throw new InvalidDataException("entry exceeds remaining bytes");
 
-            var pathBytes = br.ReadBytes(pathLen);
-            if (pathBytes.Length != pathLen)
-                throw new InvalidDataException("entry exceeds remaining bytes");
+            int cursor = pos + header;
+            var pathBytes = new byte[pathLen];
+            Buffer.BlockCopy(buffer, cursor, pathBytes, 0, pathLen);
+            cursor += pathLen;
+
+            // Drop terminating zero if present
+            if (pathBytes.Length > 0 && pathBytes[pathBytes.Length - 1] == 0)
+                Array.Resize(ref pathBytes, pathBytes.Length - 1);
 
             string path = DecodePath(pathBytes);
             path = NormalizePath(path);
-            if (string.IsNullOrEmpty(path) || !path.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
-            {
-                // Skip invalid or out-of-scope paths
-                ms.Position += dataLen;
-                return;
-            }
 
-            var fileData = br.ReadBytes(dataLen);
-            if (fileData.Length != dataLen)
-                throw new InvalidDataException("entry exceeds remaining bytes");
+            var fileData = new byte[Math.Max(0, dataLen)];
+            if (dataLen > 0)
+                Buffer.BlockCopy(buffer, cursor, fileData, 0, dataLen);
 
-            entries.Add(new ThorEntry(path, fileData));
+            pos = checked((int)((long)pos + header + pathLen + dataLen));
+
+            if (!string.IsNullOrEmpty(path) && path.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
+                entries.Add(new ThorEntry(path, fileData));
+
+            return true;
         }
 
         private static string DecodePath(byte[] pathBytes)
