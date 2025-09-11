@@ -4,15 +4,22 @@ using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Navigation;
+using System.Threading.Tasks;
+using RagnaPHPatcher.Patching;
 
 namespace RagnaPHPatcher
 {
     public partial class MainWindow : Window
     {
+        private readonly PatchManager _patchManager;
+
         public MainWindow()
         {
             InitializeComponent();
             LoadNewsPage();
+            var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "patcher.json");
+            var config = PatchConfig.Load(configPath);
+            _patchManager = new PatchManager(config, AppDomain.CurrentDomain.BaseDirectory);
         }
 
         private void LoadNewsPage()
@@ -48,8 +55,19 @@ namespace RagnaPHPatcher
             }
         }
 
-        private void LaunchGameButton_Click(object sender, RoutedEventArgs e)
+        private async void LaunchGameButton_Click(object sender, RoutedEventArgs e)
         {
+            var progress = new Progress<string>(msg => Console.WriteLine(msg));
+            try
+            {
+                await _patchManager.UpdateAsync(progress);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Patching failed: " + ex.Message, "Patch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
             string gamePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "RagnaPH.exe");
 
             if (!File.Exists(gamePath))
