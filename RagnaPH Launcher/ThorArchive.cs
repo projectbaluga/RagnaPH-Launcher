@@ -8,10 +8,10 @@ namespace RagnaPHPatcher
 {
     /// <summary>
     /// Parser for Thor "ASSF" archives produced by GRF Editor. Each archive
-    /// contains several zlib-compressed blobs and an index describing the
-    /// location of every payload. The index itself is the last zlib blob in the
-    /// file. This class validates bounds, decodes paths and exposes the file
-    /// entries for merging into a GRF.
+    /// may contain an index zlib block describing payload offsets or a single
+    /// streamed zlib block with consecutive file records. This class validates
+    /// bounds, decodes paths and exposes the file entries for merging into a
+    /// GRF.
     /// </summary>
     internal sealed class ThorArchive
     {
@@ -128,18 +128,25 @@ namespace RagnaPHPatcher
                     indexOffset = FindPreviousZlibHeader(fileBytes, metaEnd, indexOffset - 1);
                 }
 
-                if (indexEntries == null || indexEntries.Count == 0)
-                    throw new InvalidDataException("Index not found");
+                List<ThorEntry> entries;
 
-                progress?.Report($"Extract {indexEntries.Count} files");
-
-                var entries = new List<ThorEntry>(indexEntries.Count);
-                foreach (var e in indexEntries)
+                if (indexEntries != null && indexEntries.Count > 0)
                 {
-                    byte[] data = DecompressPayload(fileBytes, (int)e.Offset, (int)e.Compressed);
-                    if (data.Length != e.Decompressed)
-                        throw new InvalidDataException("decompressed length mismatch");
-                    entries.Add(new ThorEntry(e.Path, data));
+                    progress?.Report($"Extract {indexEntries.Count} files");
+
+                    entries = new List<ThorEntry>(indexEntries.Count);
+                    foreach (var e in indexEntries)
+                    {
+                        byte[] data = DecompressPayload(fileBytes, (int)e.Offset, (int)e.Compressed);
+                        if (data.Length != e.Decompressed)
+                            throw new InvalidDataException("decompressed length mismatch");
+                        entries.Add(new ThorEntry(e.Path, data));
+                    }
+                }
+                else
+                {
+                    progress?.Report("Streamed");
+                    entries = ParseStreamed(fileBytes, metaEnd);
                 }
 
                 return new ThorArchive(targetGrf, patchMode, entries);
@@ -280,6 +287,134 @@ namespace RagnaPHPatcher
                     return i;
             }
             return -1;
+        }
+
+        private static int FindNextZlibHeader(byte[] data, int start)
+        {
+            for (int i = Math.Max(start, 0); i <= data.Length - 2; i++)
+            {
+                if (IsValidZlibHeader(data, i))
+                    return i;
+            }
+            return -1;
+        }
+
+        private static List<ThorEntry> ParseStreamed(byte[] fileBytes, int metaEnd)
+        {
+            int zlibOffset = FindNextZlibHeader(fileBytes, metaEnd);
+            if (zlibOffset < 0)
+                throw new InvalidDataException("stream block not found");
+
+            byte[] streamData = DecompressPayload(fileBytes, zlibOffset, fileBytes.Length - zlibOffset);
+            var entries = new List<ThorEntry>();
+
+            using (var ms = new MemoryStream(streamData))
+            using (var br = new BinaryReader(ms))
+            {
+                while (ms.Position < ms.Length)
+                {
+                    if (!TryReadStreamRecord(br, out var entry))
+                        break;
+                    if (entry != null)
+                        entries.Add(entry);
+                }
+            }
+
+            return entries;
+        }
+
+        private static bool TryReadStreamRecord(BinaryReader br, out ThorEntry entry)
+        {
+            entry = null;
+            var ms = br.BaseStream;
+
+            if (ms.Length - ms.Position < 1)
+                return false;
+
+            long start = ms.Position;
+
+            // Try variant A (length-prefixed)
+            if (ms.Length - ms.Position >= 8)
+            {
+                int pathLen = br.ReadInt32();
+                int dataLen = br.ReadInt32();
+
+                if (pathLen >= 0 && dataLen >= 0)
+                {
+                    long remaining = ms.Length - ms.Position;
+
+                    if (remaining >= pathLen + dataLen + 4)
+                    {
+                        int peekFlags = br.ReadInt32();
+                        if (peekFlags != 0 && peekFlags != 1)
+                            ms.Position -= 4;
+                    }
+
+                    if (ms.Length - ms.Position >= pathLen + dataLen)
+                    {
+                        var pathBytes = br.ReadBytes(pathLen);
+                        if (ms.Length - ms.Position < dataLen)
+                            return false;
+                        var dataBytes = br.ReadBytes(dataLen);
+
+                        string path;
+                        try
+                        {
+                            path = DecodePath(pathBytes);
+                        }
+                        catch
+                        {
+                            return true; // skip undecodable path
+                        }
+
+                        path = path.Replace('\\', '/');
+                        if (path.StartsWith("/"))
+                            path = "data" + path;
+                        path = NormalizePath(path);
+                        if (!string.IsNullOrEmpty(path) && !path.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
+                            path = "data/" + path;
+
+                        if (!string.IsNullOrEmpty(path))
+                            entry = new ThorEntry(path, dataBytes);
+
+                        return true;
+                    }
+                }
+            }
+
+            // Reset and try variant B (CString path)
+            ms.Position = start;
+            var cPathBytes = ReadCStringBytes(br);
+            if (cPathBytes == null)
+                return false;
+            if (ms.Length - ms.Position < 4)
+                return false;
+            int len = br.ReadInt32();
+            if (len < 0 || ms.Length - ms.Position < len)
+                return false;
+            var cData = br.ReadBytes(len);
+
+            string cPath;
+            try
+            {
+                cPath = DecodePath(cPathBytes);
+            }
+            catch
+            {
+                return true; // skip undecodable path
+            }
+
+            cPath = cPath.Replace('\\', '/');
+            if (cPath.StartsWith("/"))
+                cPath = "data" + cPath;
+            cPath = NormalizePath(cPath);
+            if (!string.IsNullOrEmpty(cPath) && !cPath.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
+                cPath = "data/" + cPath;
+
+            if (!string.IsNullOrEmpty(cPath))
+                entry = new ThorEntry(cPath, cData);
+
+            return true;
         }
 
         private static byte[] DecompressPayload(byte[] buffer, int offset, int count)
