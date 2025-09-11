@@ -7,9 +7,11 @@ using System.Text;
 namespace RagnaPHPatcher
 {
     /// <summary>
-    /// Resilient parser for traditional Thor "ASSF" archives.  The reader validates
-    /// header fields, performs strict bounds checking and exposes the decoded file
-    /// entries for merging into a GRF file.
+    /// Parser for Thor "ASSF" archives produced by GRF Editor. Each archive
+    /// contains several zlib-compressed blobs and an index describing the
+    /// location of every payload. The index itself is the last zlib blob in the
+    /// file. This class validates bounds, decodes paths and exposes the file
+    /// entries for merging into a GRF.
     /// </summary>
     internal sealed class ThorArchive
     {
@@ -53,231 +55,126 @@ namespace RagnaPHPatcher
 
                 // Validate magic
                 var magic = br.ReadBytes(4);
-                if (magic.Length != 4 || magic[0] != 'A' || magic[1] != 'S' || magic[2] != 'S' || magic[3] != 'F')
+                if (magic.Length != 4 || magic[0] != 'A' || magic[1] != 'S' ||
+                    magic[2] != 'S' || magic[3] != 'F')
                     throw new InvalidDataException("Invalid .thor file header.");
 
-                // Read metadata fields as null-terminated strings (patch mode and target GRF)
+                // Read metadata fields as null-terminated strings
                 string patchMode = ReadCString(br);
                 string targetGrf = ReadCString(br);
 
-                // Default target GRF if metadata is missing
                 if (string.IsNullOrWhiteSpace(targetGrf))
                     targetGrf = "data.grf";
 
                 int metaEnd = (int)ms.Position;
 
-                // Try reading payload bounds from header
-                int payloadOffset = 0;
-                int payloadSize = 0;
-                if (ms.Position + 8 <= ms.Length)
+                // Locate the index blob: prefer header pointer, otherwise scan from tail
+                int indexOffset = -1;
+
+                if (ms.Position + 4 <= ms.Length)
                 {
                     long posBefore = ms.Position;
                     try
                     {
-                        payloadOffset = br.ReadInt32();
-                        payloadSize = br.ReadInt32();
+                        int candidate = br.ReadInt32();
+                        if (IsValidZlibHeader(fileBytes, candidate))
+                            indexOffset = candidate;
+                        else
+                            ms.Position = posBefore;
                     }
-                    catch (EndOfStreamException)
+                    catch
                     {
                         ms.Position = posBefore;
-                        payloadOffset = 0;
-                        payloadSize = 0;
-                    }
-
-                    if (!(payloadOffset >= metaEnd && payloadSize > 0 &&
-                          payloadOffset + payloadSize <= fileBytes.Length))
-                    {
-                        // Discard invalid header values
-                        payloadOffset = 0;
-                        payloadSize = 0;
                     }
                 }
 
-                // If bounds not supplied or invalid, locate zlib header manually
-                if (payloadOffset == 0 && payloadSize == 0)
+                if (indexOffset < 0)
                 {
-                    payloadOffset = FindZlibHeader(fileBytes, metaEnd);
-                    if (payloadOffset < 0)
-                        throw new InvalidDataException("zlib header not found");
-
-                    payloadSize = fileBytes.Length - payloadOffset;
+                    indexOffset = FindLastZlibHeader(fileBytes, metaEnd);
+                    if (indexOffset < 0)
+                        throw new InvalidDataException("Index not found");
                 }
 
-                // Validate final bounds
-                if (payloadOffset < metaEnd || payloadSize <= 0 ||
-                    payloadOffset + payloadSize > fileBytes.Length)
-                    throw new InvalidDataException("invalid bounds");
+                progress?.Report("Reading index");
 
-                progress?.Report("Decompressing");
+                byte[] indexData = DecompressPayload(fileBytes, indexOffset,
+                    fileBytes.Length - indexOffset);
 
-                byte[] decompressed = DecompressPayload(fileBytes, payloadOffset, payloadSize);
+                var entries = ParseIndex(indexData, fileBytes);
 
-                var entries = ParseEntries(decompressed);
                 return new ThorArchive(targetGrf, patchMode, entries);
             }
         }
 
-        private static List<ThorEntry> ParseEntries(byte[] data)
+        private static List<ThorEntry> ParseIndex(byte[] indexData, byte[] fileBytes)
         {
-            const int MinimalRecordSize = 8; // pathLen + dataLen
             var entries = new List<ThorEntry>();
 
-            int totalLen = data.Length;
             int pos = 0;
+            while (pos < indexData.Length)
+            {
+                // tag byte (unused)
+                _ = indexData[pos++];
 
-            // Detect layout variant by peeking first Int32
-            bool variantB = false;
-            if (totalLen >= 4)
-            {
-                int firstInt = BitConverter.ToInt32(data, 0);
-                if (firstInt >= 0 && (long)firstInt * MinimalRecordSize + 4 <= totalLen)
-                    variantB = true;
-            }
+                // path string (zero-terminated)
+                int start = pos;
+                while (pos < indexData.Length && indexData[pos] != 0) pos++;
+                if (pos >= indexData.Length)
+                    throw new InvalidDataException("index truncated");
 
-            if (variantB)
-            {
-                if (totalLen < 4)
-                    throw new InvalidDataException("missing entry count");
-                int count = BitConverter.ToInt32(data, 0);
-                pos = 4;
-                for (int i = 0; i < count; i++)
-                {
-                    if (!ReadEntry(data, ref pos, totalLen, entries))
-                        throw new InvalidDataException("unexpected end of entries");
-                }
-            }
-            else
-            {
-                while (pos < totalLen)
-                {
-                    if (!ReadEntry(data, ref pos, totalLen, entries))
-                        break; // trailing zeros allowed
-                }
+                var pathBytes = new byte[pos - start];
+                Buffer.BlockCopy(indexData, start, pathBytes, 0, pathBytes.Length);
+                pos++; // skip terminator
+
+                if (indexData.Length - pos < 16)
+                    throw new InvalidDataException("index truncated");
+
+                uint offset = BitConverter.ToUInt32(indexData, pos); pos += 4;
+                uint comp = BitConverter.ToUInt32(indexData, pos); pos += 4;
+                uint decomp = BitConverter.ToUInt32(indexData, pos); pos += 4;
+                _ = BitConverter.ToUInt32(indexData, pos); pos += 4; // crc
+
+                if (comp == 0 || decomp == 0 || offset + comp > fileBytes.Length)
+                    throw new InvalidDataException("invalid payload region");
+
+                string path = DecodePath(pathBytes);
+                path = path.Replace('\\', '/');
+                if (path.StartsWith("/"))
+                    path = path.TrimStart('/');
+                if (!path.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
+                    path = "data/" + path;
+                path = NormalizePath(path);
+
+                byte[] data = DecompressPayload(fileBytes, (int)offset, (int)comp);
+                if (data.Length != decomp)
+                    throw new InvalidDataException("decompressed length mismatch");
+
+                if (!string.IsNullOrEmpty(path))
+                    entries.Add(new ThorEntry(path, data));
             }
 
             return entries;
         }
 
-        private static bool ReadEntry(byte[] buffer, ref int pos, int totalLen, List<ThorEntry> entries)
+        private static bool IsValidZlibHeader(byte[] buffer, int offset)
         {
-            int remaining = totalLen - pos;
-            if (remaining < 8)
-                return false; // trailing zeros allowed
-
-            int rawPathLen = BitConverter.ToInt32(buffer, pos);
-            int dataLen = BitConverter.ToInt32(buffer, pos + 4);
-
-            int header = 8;
-            int pathLen = rawPathLen;
-
-            // Default interpretation
-            bool success = pathLen >= 0 && dataLen >= 0 &&
-                           (long)pos + header + pathLen + dataLen <= totalLen;
-
-            // Fallbacks for negative lengths
-            if (!success && (rawPathLen < 0 || dataLen < 0))
-            {
-                // Try with optional flags
-                if (!success && remaining >= 12)
-                {
-                    header = 12;
-                    pathLen = rawPathLen;
-                    success = pathLen >= 0 && dataLen >= 0 &&
-                              (long)pos + header + pathLen + dataLen <= totalLen;
-                }
-
-                // Try null-terminated path without flags
-                if (!success && dataLen >= 0)
-                {
-                    header = 8;
-                    int scanStart = pos + header;
-                    int idx = scanStart;
-                    while (idx < totalLen && buffer[idx] != 0) idx++;
-                    if (idx < totalLen)
-                    {
-                        pathLen = idx - scanStart + 1; // include terminator
-                        success = (long)pos + header + pathLen + dataLen <= totalLen;
-                    }
-                }
-
-                // Try null-terminated path with flags
-                if (!success && remaining >= 12 && dataLen >= 0)
-                {
-                    header = 12;
-                    int scanStart = pos + header;
-                    int idx = scanStart;
-                    while (idx < totalLen && buffer[idx] != 0) idx++;
-                    if (idx < totalLen)
-                    {
-                        pathLen = idx - scanStart + 1; // include terminator
-                        success = (long)pos + header + pathLen + dataLen <= totalLen;
-                    }
-                }
-            }
-
-            if (!success)
-                throw new InvalidDataException("entry exceeds remaining bytes");
-
-            int cursor = pos + header;
-            var pathBytes = new byte[pathLen];
-            Buffer.BlockCopy(buffer, cursor, pathBytes, 0, pathLen);
-            cursor += pathLen;
-
-            // Drop terminating zero if present
-            if (pathBytes.Length > 0 && pathBytes[pathBytes.Length - 1] == 0)
-                Array.Resize(ref pathBytes, pathBytes.Length - 1);
-
-            string path = DecodePath(pathBytes);
-            path = NormalizePath(path);
-
-            var fileData = new byte[Math.Max(0, dataLen)];
-            if (dataLen > 0)
-                Buffer.BlockCopy(buffer, cursor, fileData, 0, dataLen);
-
-            pos = checked((int)((long)pos + header + pathLen + dataLen));
-
-            if (!string.IsNullOrEmpty(path) && path.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
-                entries.Add(new ThorEntry(path, fileData));
-
-            return true;
+            if (offset < 0 || offset + 2 > buffer.Length)
+                return false;
+            byte cmf = buffer[offset];
+            byte flg = buffer[offset + 1];
+            if (cmf != 0x78)
+                return false;
+            if (flg != 0x01 && flg != 0x5E && flg != 0x9C && flg != 0xDA)
+                return false;
+            int combined = (cmf << 8) | flg;
+            return (cmf & 0x0F) == 8 && combined % 31 == 0;
         }
 
-        private static string DecodePath(byte[] pathBytes)
+        private static int FindLastZlibHeader(byte[] data, int start)
         {
-            Encoding[] encodings = new Encoding[]
+            for (int i = data.Length - 2; i >= start; i--)
             {
-                Encoding.GetEncoding(949, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback), // CP949
-                Encoding.GetEncoding(1252, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback), // Windows-1252
-                new UTF8Encoding(false, true)
-            };
-
-            foreach (var enc in encodings)
-            {
-                try
-                {
-                    return enc.GetString(pathBytes);
-                }
-                catch (DecoderFallbackException)
-                {
-                    // try next encoding
-                }
-            }
-
-            throw new InvalidDataException("entry path undecodable");
-        }
-
-        private static int FindZlibHeader(byte[] data, int start)
-        {
-            for (int i = start; i < data.Length - 1; i++)
-            {
-                byte cmf = data[i];
-                byte flg = data[i + 1];
-                if (cmf != 0x78)
-                    continue;
-                if (flg != 0x01 && flg != 0x5E && flg != 0x9C && flg != 0xDA)
-                    continue;
-                int combined = (cmf << 8) | flg;
-                if ((cmf & 0x0F) == 8 && combined % 31 == 0)
+                if (IsValidZlibHeader(data, i))
                     return i;
             }
             return -1;
@@ -323,16 +220,47 @@ namespace RagnaPHPatcher
         {
             var bytes = new List<byte>();
             byte b;
-            while (br.BaseStream.Position < br.BaseStream.Length && (b = br.ReadByte()) != 0)
+            while (br.BaseStream.Position < br.BaseStream.Length &&
+                   (b = br.ReadByte()) != 0)
             {
                 bytes.Add(b);
             }
             return bytes.Count > 0 ? Encoding.ASCII.GetString(bytes.ToArray()) : string.Empty;
         }
 
+        private static string DecodePath(byte[] pathBytes)
+        {
+            Encoding[] encodings = new Encoding[]
+            {
+                Encoding.GetEncoding(
+                    949,
+                    EncoderFallback.ExceptionFallback,
+                    DecoderFallback.ExceptionFallback), // CP949
+                Encoding.GetEncoding(
+                    1252,
+                    EncoderFallback.ExceptionFallback,
+                    DecoderFallback.ExceptionFallback), // Windows-1252
+                new UTF8Encoding(false, true),
+            };
+
+            foreach (var enc in encodings)
+            {
+                try
+                {
+                    return enc.GetString(pathBytes);
+                }
+                catch (DecoderFallbackException)
+                {
+                    // try next encoding
+                }
+            }
+
+            throw new InvalidDataException("entry path undecodable");
+        }
+
         private static string NormalizePath(string path)
         {
-            var parts = path.Replace('\\', '/').Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            var parts = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
             var stack = new Stack<string>();
             foreach (var part in parts)
             {
