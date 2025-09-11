@@ -17,7 +17,6 @@ namespace RagnaPH_Launcher
             if (e.Args.Length >= 2 && string.Equals(e.Args[0], "--apply-patch", StringComparison.OrdinalIgnoreCase))
             {
                 var source = e.Args[1];
-                var grfPath = e.Args.Length >= 3 ? e.Args[2] : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data.grf");
                 var patchPath = source;
 
                 try
@@ -34,9 +33,14 @@ namespace RagnaPH_Launcher
                         throw new InvalidDataException("Patch file is not a .thor archive.");
 
                     var progress = new Progress<ThorPatcher.PatchProgress>(p =>
-                        Console.WriteLine($"[{p.Index}/{p.Count}] {p.Path}"));
+                    {
+                        if (!string.IsNullOrEmpty(p.Phase))
+                            Console.WriteLine(p.Phase);
+                        else if (!string.IsNullOrEmpty(p.Path))
+                            Console.WriteLine($"[{p.Index}/{p.Count}] {p.Path}");
+                    });
 
-                    ThorPatcher.ApplyPatch(patchPath, grfPath, progress);
+                    ThorPatcher.ApplyPatch(patchPath, progress);
                     Console.WriteLine("Patch applied successfully.");
                     Environment.ExitCode = 0;
                     try { File.Delete(patchPath); } catch { }
