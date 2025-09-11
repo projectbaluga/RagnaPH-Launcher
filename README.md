@@ -33,6 +33,20 @@ A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displ
 3. Restore NuGet packages and build the project.
 4. Run the generated executable or press <kbd>F5</kbd> in Visual Studio.
 
+## 📁 Project Structure
+
+- `RagnaPH Launcher/` – WPF front-end targeting .NET Framework 4.8.
+- `src/RagnaPH.Patching/` – .NET 8 library that handles downloading patches, parsing lists, and tracking state.
+- `tests/RagnaPH.Patching.Tests/` – xUnit tests for the patching engine.
+
+## 🧪 Testing
+
+The test suite validates patch parsing, downloads, and state handling:
+
+```bash
+dotnet test
+```
+
 ## 🛠️ Configuration
 
 The launcher downloads its behavior settings from a remote `config.ini`. Key values include:
@@ -46,6 +60,37 @@ The launcher downloads its behavior settings from a remote `config.ini`. Key val
 | `[Patch]` | `PatchList` | Name of the patch list file |
 
 The patch list is fetched from `file_url + PatchList` and each entry is downloaded relative to the launcher’s directory.
+
+### `patcher.config.json`
+
+The patching engine also reads a local JSON file to determine patch servers and patch behaviour. A minimal example is:
+
+```json
+{
+  "web": {
+    "patchServers": [
+      { "name": "primary", "plistUrl": "https://patch.ragna.ph/plist.txt", "patchUrl": "https://patch.ragna.ph/patches/" }
+    ],
+    "timeoutSeconds": 30,
+    "maxParallelDownloads": 3,
+    "retry": { "maxAttempts": 4, "backoffSeconds": [1, 2, 5, 10] }
+  },
+  "patching": {
+    "defaultTargetGrf": "data.grf",
+    "inPlace": false,
+    "checkIntegrity": true,
+    "createGrf": true,
+    "enforceFreeSpaceMB": 512
+  },
+  "paths": {
+    "gameRoot": ".",
+    "downloadTemp": "patch_tmp",
+    "appliedIndex": "patch_state.json"
+  }
+}
+```
+
+These values correspond to the `PatchConfig` model in `src/RagnaPH.Patching` and can be customised for different patch hosts and installation locations.
 
 ## 📸 UI Overview
 
