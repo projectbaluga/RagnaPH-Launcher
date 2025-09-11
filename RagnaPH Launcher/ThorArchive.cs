@@ -27,6 +27,22 @@ namespace RagnaPHPatcher
             public byte[] Data { get; }
         }
 
+        private sealed class IndexEntry
+        {
+            public IndexEntry(string path, uint offset, uint compressed, uint decompressed)
+            {
+                Path = path;
+                Offset = offset;
+                Compressed = compressed;
+                Decompressed = decompressed;
+            }
+
+            public string Path { get; }
+            public uint Offset { get; }
+            public uint Compressed { get; }
+            public uint Decompressed { get; }
+        }
+
         public string TargetGrf { get; }
         public string PatchMode { get; }
         public IReadOnlyList<ThorEntry> Entries { get; }
@@ -51,7 +67,7 @@ namespace RagnaPHPatcher
             using (var ms = new MemoryStream(fileBytes))
             using (var br = new BinaryReader(ms, Encoding.UTF8, leaveOpen: true))
             {
-                progress?.Report("Reading header");
+                progress?.Report("Header");
 
                 // Validate magic
                 var magic = br.ReadBytes(4);
@@ -68,9 +84,8 @@ namespace RagnaPHPatcher
 
                 int metaEnd = (int)ms.Position;
 
-                // Locate the index blob: prefer header pointer, otherwise scan from tail
+                // Determine initial index pointer from header if present
                 int indexOffset = -1;
-
                 if (ms.Position + 4 <= ms.Length)
                 {
                     long posBefore = ms.Position;
@@ -88,72 +103,159 @@ namespace RagnaPHPatcher
                     }
                 }
 
+                progress?.Report("Index");
+
                 if (indexOffset < 0)
                 {
-                    indexOffset = FindLastZlibHeader(fileBytes, metaEnd);
-                    if (indexOffset < 0)
-                        throw new InvalidDataException("Index not found");
+                    indexOffset = FindPreviousZlibHeader(fileBytes, metaEnd, fileBytes.Length - 2);
                 }
 
-                progress?.Report("Reading index");
+                List<IndexEntry> indexEntries = null;
+                while (indexOffset >= metaEnd)
+                {
+                    try
+                    {
+                        byte[] indexData = DecompressPayload(fileBytes, indexOffset,
+                            fileBytes.Length - indexOffset);
+                        if (TryParseIndex(indexData, fileBytes.Length, out indexEntries))
+                            break;
+                    }
+                    catch
+                    {
+                        // ignore and step to previous header
+                    }
 
-                byte[] indexData = DecompressPayload(fileBytes, indexOffset,
-                    fileBytes.Length - indexOffset);
+                    indexOffset = FindPreviousZlibHeader(fileBytes, metaEnd, indexOffset - 1);
+                }
 
-                var entries = ParseIndex(indexData, fileBytes);
+                if (indexEntries == null || indexEntries.Count == 0)
+                    throw new InvalidDataException("Index not found");
+
+                progress?.Report($"Extract {indexEntries.Count} files");
+
+                var entries = new List<ThorEntry>(indexEntries.Count);
+                foreach (var e in indexEntries)
+                {
+                    byte[] data = DecompressPayload(fileBytes, (int)e.Offset, (int)e.Compressed);
+                    if (data.Length != e.Decompressed)
+                        throw new InvalidDataException("decompressed length mismatch");
+                    entries.Add(new ThorEntry(e.Path, data));
+                }
 
                 return new ThorArchive(targetGrf, patchMode, entries);
             }
         }
 
-        private static List<ThorEntry> ParseIndex(byte[] indexData, byte[] fileBytes)
+        private static bool TryParseIndex(byte[] indexData, long fileLength, out List<IndexEntry> entries)
         {
-            var entries = new List<ThorEntry>();
+            entries = new List<IndexEntry>();
 
-            int pos = 0;
-            while (pos < indexData.Length)
+            using (var ms = new MemoryStream(indexData))
+            using (var br = new BinaryReader(ms))
             {
-                // tag byte (unused)
-                _ = indexData[pos++];
+                bool counted = false;
+                uint expected = 0;
+                if (indexData.Length >= 4)
+                {
+                    expected = BitConverter.ToUInt32(indexData, 0);
+                    long minLen = (long)expected * 17 + 4;
+                    if (minLen <= indexData.Length)
+                    {
+                        counted = true;
+                        br.ReadUInt32();
+                    }
+                }
 
-                // path string (zero-terminated)
-                int start = pos;
-                while (pos < indexData.Length && indexData[pos] != 0) pos++;
-                if (pos >= indexData.Length)
-                    throw new InvalidDataException("index truncated");
-
-                var pathBytes = new byte[pos - start];
-                Buffer.BlockCopy(indexData, start, pathBytes, 0, pathBytes.Length);
-                pos++; // skip terminator
-
-                if (indexData.Length - pos < 16)
-                    throw new InvalidDataException("index truncated");
-
-                uint offset = BitConverter.ToUInt32(indexData, pos); pos += 4;
-                uint comp = BitConverter.ToUInt32(indexData, pos); pos += 4;
-                uint decomp = BitConverter.ToUInt32(indexData, pos); pos += 4;
-                _ = BitConverter.ToUInt32(indexData, pos); pos += 4; // crc
-
-                if (comp == 0 || decomp == 0 || offset + comp > fileBytes.Length)
-                    throw new InvalidDataException("invalid payload region");
-
-                string path = DecodePath(pathBytes);
-                path = path.Replace('\\', '/');
-                if (path.StartsWith("/"))
-                    path = path.TrimStart('/');
-                if (!path.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
-                    path = "data/" + path;
-                path = NormalizePath(path);
-
-                byte[] data = DecompressPayload(fileBytes, (int)offset, (int)comp);
-                if (data.Length != decomp)
-                    throw new InvalidDataException("decompressed length mismatch");
-
-                if (!string.IsNullOrEmpty(path))
-                    entries.Add(new ThorEntry(path, data));
+                if (counted)
+                {
+                    for (uint i = 0; i < expected; i++)
+                    {
+                        if (!TryReadRecord(br, fileLength, stopOnTag: false, out var rec))
+                            break;
+                        if (rec != null)
+                            entries.Add(rec);
+                    }
+                }
+                else
+                {
+                    while (TryReadRecord(br, fileLength, stopOnTag: true, out var rec))
+                    {
+                        if (rec != null)
+                            entries.Add(rec);
+                    }
+                }
             }
 
-            return entries;
+            return entries.Count > 0;
+        }
+
+        private static bool TryReadRecord(BinaryReader br, long fileLength, bool stopOnTag, out IndexEntry entry)
+        {
+            entry = null;
+            var ms = br.BaseStream;
+
+            if (ms.Length - ms.Position < 1)
+                return false;
+
+            byte tag = br.ReadByte();
+            if (stopOnTag && (tag == 0 || tag == 0xFF))
+                return false;
+
+            // Read path bytes
+            var pathBytes = ReadCStringBytes(br);
+            if (pathBytes == null)
+                return false; // truncated path
+
+            if (ms.Length - ms.Position < 16)
+                return false; // truncated record
+
+            uint offset = br.ReadUInt32();
+            uint comp = br.ReadUInt32();
+            uint decomp = br.ReadUInt32();
+            br.ReadUInt32(); // crc
+
+            if (comp == 0 || decomp == 0 || (long)offset + comp > fileLength)
+                throw new InvalidDataException("invalid payload region");
+
+            string path;
+            try
+            {
+                path = DecodePath(pathBytes);
+            }
+            catch
+            {
+                return true; // skip undecodable path
+            }
+
+            path = path.Replace('\\', '/');
+            if (path.StartsWith("/"))
+                path = "data" + path;
+            path = NormalizePath(path);
+
+            if (!string.IsNullOrEmpty(path))
+                entry = new IndexEntry(path, offset, comp, decomp);
+
+            return true;
+        }
+
+        private static byte[] ReadCStringBytes(BinaryReader br)
+        {
+            var ms = br.BaseStream;
+            long start = ms.Position;
+            while (ms.Position < ms.Length)
+            {
+                if (br.ReadByte() == 0)
+                {
+                    long end = ms.Position - 1;
+                    int len = (int)(end - start);
+                    ms.Position = start;
+                    var bytes = br.ReadBytes(len);
+                    br.ReadByte(); // consume terminator
+                    return bytes;
+                }
+            }
+            ms.Position = ms.Length; // move to end on failure
+            return null;
         }
 
         private static bool IsValidZlibHeader(byte[] buffer, int offset)
@@ -170,9 +272,9 @@ namespace RagnaPHPatcher
             return (cmf & 0x0F) == 8 && combined % 31 == 0;
         }
 
-        private static int FindLastZlibHeader(byte[] data, int start)
+        private static int FindPreviousZlibHeader(byte[] data, int start, int from)
         {
-            for (int i = data.Length - 2; i >= start; i--)
+            for (int i = Math.Min(from, data.Length - 2); i >= start; i--)
             {
                 if (IsValidZlibHeader(data, i))
                     return i;

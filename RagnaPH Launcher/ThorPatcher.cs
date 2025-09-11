@@ -54,8 +54,6 @@ namespace RagnaPHPatcher
             foreach (var e in archive.Entries)
                 if (e.Data.Length > 0) total++;
 
-            progress?.Report(new PatchProgress($"Merging {total} files"));
-
             int index = 0;
             foreach (var entry in archive.Entries)
             {
@@ -67,7 +65,7 @@ namespace RagnaPHPatcher
                 grf.InsertOrReplace(entry.Path, entry.Data);
             }
 
-            progress?.Report(new PatchProgress("Saving GRF"));
+            progress?.Report(new PatchProgress("Save GRF"));
             grf.Save();
             // Verify by reloading the index
             grf.Load();
