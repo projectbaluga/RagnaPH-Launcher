@@ -24,7 +24,8 @@ namespace RagnaPHPatcher
         }
 
         /// <summary>
-        /// Applies a Thor patch archive by merging its contents into the target GRF.
+        /// Applies a Thor patch archive by merging its contents into the target GRF and
+        /// updating files on disk when needed.
         /// </summary>
         /// <param name="thorFilePath">Path to the downloaded Thor archive.</param>
         /// <param name="progress">Optional progress reporter.</param>
