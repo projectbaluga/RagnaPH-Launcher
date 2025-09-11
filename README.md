@@ -10,6 +10,8 @@ A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displ
 
 - **Integrated News Feed** – Loads the [RagnaPH news page](https://ragna.ph/?module=news) inside the launcher and strips out navigation and footer elements for a clean look.
 - **Automatic Patching** – Downloads a remote configuration and sequential patch list to keep the game client current.
+- **Verified Downloads** – `HttpPatchDownloader` retries failed downloads and validates file size and SHA-256 hashes before applying patches.
+- **Patch State Persistence** – `PatchStateStore` records applied patch IDs in `patch_state.json` so the launcher only downloads missing updates.
 - **Thor Archive Support** – Detects downloaded `.thor` patch archives and merges their contents into `data.grf`.
 - **Progress Feedback** – Visual progress bar and status text during patching.
 - **One‑Click Launch** – Starts `RagnaPH.exe` directly from the launcher once patching is complete.
@@ -38,6 +40,17 @@ A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displ
 - `RagnaPH Launcher/` – WPF front-end targeting .NET Framework 4.8.
 - `src/RagnaPH.Patching/` – .NET 8 library that handles downloading patches, parsing lists, and tracking state.
 - `tests/RagnaPH.Patching.Tests/` – xUnit tests for the patching engine.
+
+### Patching Library Highlights
+
+Key components inside `src/RagnaPH.Patching` include:
+
+- `PatchConfigLoader` – reads `patcher.config.json` and ensures a valid setup.
+- `HttpPatchSource` – queries mirrors for `plist.txt` and builds a patch plan.
+- `PatchListParser` – converts patch list entries into strongly typed `PatchJob` records.
+- `HttpPatchDownloader` – downloads archives with retry, size and checksum validation.
+- `PatchStateStore` – tracks applied patch IDs in a JSON file.
+- `PatchEngine` – orchestrates downloading and applying patches while raising progress events for the UI.
 
 ## 🧪 Testing
 
