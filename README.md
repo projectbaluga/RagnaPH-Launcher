@@ -6,6 +6,21 @@
 
 A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displays the latest news, keeps the game files up to date, and launches the client with a single click.
 
+## 📚 Table of Contents
+
+- [Features](#-features)
+- [Getting Started](#-getting-started)
+- [Usage](#-usage)
+- [Project Structure](#-project-structure)
+- [Patching Workflow](#-patching-workflow)
+- [Testing](#-testing)
+- [Configuration](#%EF%B8%8F-configuration)
+- [Setting Up a Patch Server](#-setting-up-a-patch-server)
+- [UI Overview](#-ui-overview)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
+- [License](#-license)
+
 ## ✨ Features
 
 - **Integrated News Feed** – Loads the [RagnaPH news page](https://ragna.ph/?module=news) inside the launcher and strips out navigation and footer elements for a clean look.
@@ -31,9 +46,22 @@ A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displ
    ```bash
    git clone https://github.com/your-user/RagnaPH-Launcher.git
    ```
-2. Open the solution file `RagnaPH Launcher.sln` in Visual Studio.
-3. Restore NuGet packages and build the project.
-4. Run the generated executable or press <kbd>F5</kbd> in Visual Studio.
+2. Restore dependencies and build the solution.
+   - **Visual Studio:** Open `RagnaPH Launcher.sln`, allow NuGet to restore packages, then build and run.
+   - **Command line:** In a Developer Command Prompt run:
+     ```cmd
+     nuget restore
+     msbuild "RagnaPH Launcher.sln" /p:Configuration=Release
+     ```
+3. Ensure `patcher.config.json` and any server-side `config.ini` are placed next to the built executable.
+4. Launch `RagnaPH Launcher.exe` (or press <kbd>F5</kbd> in Visual Studio) to start patching.
+
+## 💻 Usage
+
+1. Place the launcher in the same directory as the RagnaPH game files.
+2. Edit `patcher.config.json` and `config.ini` to point to your patch servers.
+3. Run the launcher; it displays news, downloads missing patches, and enables **Launch Game** when ready.
+4. Use **Check Files** to re‑validate game data if an update fails.
 
 ## 📁 Project Structure
 
@@ -71,7 +99,7 @@ Key components inside `src/RagnaPH.Patching` include:
 
 ## 🧪 Testing
 
-The test suite validates patch parsing, downloads, and state handling:
+The test suite validates patch parsing, downloads, and state handling. Run it from the repository root with the .NET SDK installed:
 
 ```bash
 dotnet test
@@ -168,6 +196,12 @@ These values correspond to the `PatchConfig` model in `src/RagnaPH.Patching` and
 | [Launch Game]   [Check Files]   [Exit]               |
 +------------------------------------------------------+
 ```
+
+## 🐞 Troubleshooting
+
+- **Launcher can't find the game:** place the executable in the same folder as `RagnaPH.exe`.
+- **Patching fails with network errors:** verify the patch server URLs in `config.ini` and `patcher.config.json`.
+- **Checksum mismatch:** delete the affected patch from `patch_tmp` and restart the launcher.
 
 ## 🤝 Contributing
 
