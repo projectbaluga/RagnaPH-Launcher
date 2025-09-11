@@ -28,8 +28,6 @@ namespace RagnaPHPatcher
 
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string grfPath = Path.Combine(baseDir, archive.TargetGrf);
-            if (!File.Exists(grfPath))
-                throw new FileNotFoundException("Base GRF not found", grfPath);
 
             var entries = archive.Entries
                 .Select(e => NormalizeEntry(new PatchEntry { Path = e.Path, Bytes = e.Data.Length == 0 ? null : e.Data }))
@@ -38,8 +36,19 @@ namespace RagnaPHPatcher
             if (entries.Count == 0 || entries.All(e => e.IsDirectory))
                 throw new InvalidDataException("No files found in .thor payload.");
 
-            long totalBytes = entries.Where(e => !e.IsDirectory).Sum(e => (long)e.Bytes.Length);
-            EnsureFreeSpace(grfPath, totalBytes + 32L * 1024 * 1024);
+            var grfEntries = entries
+                .Where(e => e.Path.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var fsEntries = entries
+                .Where(e => !e.Path.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (grfEntries.Count > 0 && !File.Exists(grfPath))
+                throw new FileNotFoundException("Base GRF not found", grfPath);
+
+            long totalBytes = grfEntries.Where(e => !e.IsDirectory).Sum(e => (long)e.Bytes.Length);
+            if (grfEntries.Count > 0)
+                EnsureFreeSpace(grfPath, totalBytes + 32L * 1024 * 1024);
 
             string temp = grfPath + ".tmp";
             string bak = grfPath + ".bak";
@@ -50,15 +59,31 @@ namespace RagnaPHPatcher
 
             try
             {
+                int total = grfEntries.Count(e => !e.IsDirectory) + fsEntries.Count(e => !e.IsDirectory);
+                int index = 0;
+
+                // Write file system entries first
+                foreach (var entry in fsEntries)
+                {
+                    if (entry.IsDirectory)
+                    {
+                        Directory.CreateDirectory(Path.Combine(baseDir, entry.Path));
+                        continue;
+                    }
+                    progress?.Report(new ThorPatcher.PatchProgress(null, ++index, total, entry.Path));
+                    string outPath = Path.Combine(baseDir, entry.Path);
+                    Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+                    File.WriteAllBytes(outPath, entry.Bytes);
+                }
+
+                // Patch GRF entries into a temporary copy
                 progress?.Report(new ThorPatcher.PatchProgress("Apply to temp"));
 
                 File.Copy(grfPath, temp, overwrite: true);
 
                 var grf = new SimpleGrf(temp);
                 grf.Load();
-                int total = entries.Count(e => !e.IsDirectory);
-                int index = 0;
-                foreach (var entry in entries)
+                foreach (var entry in grfEntries)
                 {
                     if (entry.IsDirectory) continue;
                     progress?.Report(new ThorPatcher.PatchProgress(null, ++index, total, entry.Path));
@@ -67,7 +92,7 @@ namespace RagnaPHPatcher
                 grf.Save();
 
                 progress?.Report(new ThorPatcher.PatchProgress("Validate"));
-                if (!Validate(temp, entries))
+                if (!Validate(temp, grfEntries))
                     throw new InvalidDataException("Validation failed after writing temp GRF.");
 
                 progress?.Report(new ThorPatcher.PatchProgress("Swap"));
@@ -94,8 +119,9 @@ namespace RagnaPHPatcher
             if (string.IsNullOrWhiteSpace(p)) throw new InvalidDataException("Empty entry path.");
 
             var safe = string.Join("/", p.Split('/').Where(s => s != "." && s != ".."));
-            if (!safe.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
-                safe = "data/" + safe.TrimStart('/');
+            safe = safe.TrimStart('/');
+            if (string.IsNullOrEmpty(safe))
+                throw new InvalidDataException("Empty entry path.");
 
             e.Path = safe;
             return e;

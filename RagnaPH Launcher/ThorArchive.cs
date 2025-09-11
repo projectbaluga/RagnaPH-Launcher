@@ -368,12 +368,8 @@ namespace RagnaPHPatcher
                         }
 
                         path = path.Replace('\\', '/');
-                        if (path.StartsWith("/"))
-                            path = "data" + path;
+                        path = path.TrimStart('/');
                         path = NormalizePath(path);
-                        if (!string.IsNullOrEmpty(path) && !path.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
-                            path = "data/" + path;
-
                         if (!string.IsNullOrEmpty(path))
                             entry = new ThorEntry(path, dataBytes);
 
@@ -405,12 +401,8 @@ namespace RagnaPHPatcher
             }
 
             cPath = cPath.Replace('\\', '/');
-            if (cPath.StartsWith("/"))
-                cPath = "data" + cPath;
+            cPath = cPath.TrimStart('/');
             cPath = NormalizePath(cPath);
-            if (!string.IsNullOrEmpty(cPath) && !cPath.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
-                cPath = "data/" + cPath;
-
             if (!string.IsNullOrEmpty(cPath))
                 entry = new ThorEntry(cPath, cData);
 
