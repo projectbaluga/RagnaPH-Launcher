@@ -83,15 +83,10 @@
       <DependentUpon>App.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="IniFile.cs" />
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="ThorArchive.cs" />
-    <Compile Include="ThorPatcher.cs" />
-    <Compile Include="SimpleGrf.cs" />
-    <Compile Include="SafeGrfPatcher.cs" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs">
@@ -123,7 +118,6 @@
     <Resource Include="Images\background.png" />
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="Images\check_icon.png" />
     <Resource Include="Images\launch_icon.png" />
   </ItemGroup>
   <ItemGroup>
@@ -143,7 +137,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="HtmlAgilityPack" Version="1.12.1" />
-    <PackageReference Include="GRF" Version="0.3.1" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

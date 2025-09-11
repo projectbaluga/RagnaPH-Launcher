@@ -51,43 +51,6 @@
             </Style.Triggers>
         </Style>
 
-        <!-- Blue Button Style (Check File) -->
-        <Style x:Key="BlueButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#1E88E5"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Width" Value="160"/>
-            <Setter Property="Height" Value="45"/>
-            <Setter Property="Margin" Value="10"/>
-            <Setter Property="HorizontalAlignment" Value="Left"/>
-            <Setter Property="VerticalAlignment" Value="Bottom"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="Padding" Value="10"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}" 
-                                BorderBrush="{TemplateBinding BorderBrush}" 
-                                BorderThickness="1" 
-                                CornerRadius="10">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#1565C0"/>
-                </Trigger>
-                <Trigger Property="IsPressed" Value="True">
-                    <Setter Property="Background" Value="#0D47A1"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
         <!-- Close Button Style -->
         <Style x:Key="CloseButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
@@ -144,44 +107,11 @@
             </StackPanel>
         </Button>
 
-        <!-- Check File Button with Blue Style -->
-        <Button Name="CheckFileButton"
-                Style="{StaticResource BlueButtonStyle}"
-                Margin="150,0,0,10"
-                Click="CheckFileButton_Click" Grid.Column="2">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <Image Source="Images/check_icon.png" Width="20" Height="20" Margin="5" />
-                <TextBlock Text="Check" VerticalAlignment="Center" Margin="5"/>
-            </StackPanel>
-        </Button>
-
         <!-- Close Button -->
         <Button Name="CloseButton"
                 Style="{StaticResource CloseButtonStyle}"
                 Click="CloseButton_Click"
                 Margin="0,1,1,0" Grid.Column="2" />
-
-        <!-- Patcher Progress -->
-        <ProgressBar Name="PatcherProgressBar"
-                     Minimum="0"
-                     Maximum="100"
-                     Value="0"
-                     Height="25"
-                     Margin="313,456,10,0"
-                     VerticalAlignment="Top"
-                     Foreground="#E53935"
-                     Background="White"
-                     BorderBrush="Gray"
-                     BorderThickness="1" Grid.Column="2"/>
-
-        <!-- Progress Text -->
-        <TextBlock Name="ProgressText"
-                   Text="Progress: 0%"
-                   HorizontalAlignment="Left"
-                   VerticalAlignment="Bottom"
-                   Margin="317,0,0,45"
-                   FontWeight="Bold"
-                   Foreground="#1565C0" Grid.Column="2"/>
         <Image Margin="63,12,540,380" Source="/Images/logo.png" Stretch="Fill" Grid.Column="2">
             <Image.Effect>
                 <DropShadowEffect BlurRadius="1" Direction="210" Opacity="0.5" RenderingBias="Quality" ShadowDepth="5" Color="#FF737373"/>
