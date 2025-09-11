@@ -64,6 +64,15 @@ namespace RagnaPHPatcher
             grf.Save();
             // Verify by reloading the index
             grf.Load();
+
+            try
+            {
+                File.Delete(thorFilePath);
+            }
+            catch
+            {
+                // Ignore cleanup errors
+            }
         }
     }
 }
