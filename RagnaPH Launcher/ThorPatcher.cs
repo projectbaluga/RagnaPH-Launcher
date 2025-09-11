@@ -50,12 +50,19 @@ namespace RagnaPHPatcher
             var grf = new SimpleGrf(grfPath);
             grf.Load();
 
-            progress?.Report(new PatchProgress($"Merging {archive.Entries.Count} files"));
+            int total = 0;
+            foreach (var e in archive.Entries)
+                if (e.Data.Length > 0) total++;
 
-            int total = archive.Entries.Count;
+            progress?.Report(new PatchProgress($"Merging {total} files"));
+
             int index = 0;
             foreach (var entry in archive.Entries)
             {
+                if (entry.Data.Length == 0)
+                {
+                    continue; // directory entry
+                }
                 progress?.Report(new PatchProgress(null, ++index, total, entry.Path));
                 grf.InsertOrReplace(entry.Path, entry.Data);
             }
