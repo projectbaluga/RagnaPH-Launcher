@@ -64,32 +64,53 @@ namespace RagnaPHPatcher
                 if (string.IsNullOrWhiteSpace(targetGrf))
                     targetGrf = "data.grf";
 
-                // Immediately after metadata: payloadOffset and payloadSize
-                int payloadOffset;
-                int payloadSize;
-                try
+                int metaEnd = (int)ms.Position;
+
+                // Try reading payload bounds from header
+                int payloadOffset = 0;
+                int payloadSize = 0;
+                if (ms.Position + 8 <= ms.Length)
                 {
-                    payloadOffset = br.ReadInt32();
-                    payloadSize = br.ReadInt32();
-                }
-                catch (EndOfStreamException ex)
-                {
-                    throw new InvalidDataException("Incomplete .thor header region.", ex);
+                    long posBefore = ms.Position;
+                    try
+                    {
+                        payloadOffset = br.ReadInt32();
+                        payloadSize = br.ReadInt32();
+                    }
+                    catch (EndOfStreamException)
+                    {
+                        ms.Position = posBefore;
+                        payloadOffset = 0;
+                        payloadSize = 0;
+                    }
+
+                    if (!(payloadOffset >= metaEnd && payloadSize > 0 &&
+                          payloadOffset + payloadSize <= fileBytes.Length))
+                    {
+                        // Discard invalid header values
+                        payloadOffset = 0;
+                        payloadSize = 0;
+                    }
                 }
 
-                progress?.Report("Validating payload");
+                // If bounds not supplied or invalid, locate zlib header manually
+                if (payloadOffset == 0 && payloadSize == 0)
+                {
+                    payloadOffset = FindZlibHeader(fileBytes, metaEnd);
+                    if (payloadOffset < 0)
+                        throw new InvalidDataException("zlib header not found");
 
-                if (payloadOffset < 0 || payloadSize <= 0 ||
+                    payloadSize = fileBytes.Length - payloadOffset;
+                }
+
+                // Validate final bounds
+                if (payloadOffset < metaEnd || payloadSize <= 0 ||
                     payloadOffset + payloadSize > fileBytes.Length)
-                    throw new InvalidDataException("payloadOffset/payloadSize out of bounds");
+                    throw new InvalidDataException("invalid bounds");
 
-                // Slice the payload and decompress
                 progress?.Report("Decompressing");
 
-                var payload = new byte[payloadSize];
-                Buffer.BlockCopy(fileBytes, payloadOffset, payload, 0, payloadSize);
-
-                byte[] decompressed = DecompressZlib(payload);
+                byte[] decompressed = DecompressPayload(fileBytes, payloadOffset, payloadSize);
 
                 var entries = ParseEntries(decompressed);
                 return new ThorArchive(targetGrf, patchMode, entries);
@@ -153,11 +174,29 @@ namespace RagnaPHPatcher
             return entries;
         }
 
-        private static byte[] DecompressZlib(byte[] slice)
+        private static int FindZlibHeader(byte[] data, int start)
         {
+            for (int i = start; i < data.Length - 1; i++)
+            {
+                byte cmf = data[i];
+                byte flg = data[i + 1];
+                if (cmf != 0x78)
+                    continue;
+                if (flg != 0x01 && flg != 0x5E && flg != 0x9C && flg != 0xDA)
+                    continue;
+                int combined = (cmf << 8) | flg;
+                if ((cmf & 0x0F) == 8 && combined % 31 == 0)
+                    return i;
+            }
+            return -1;
+        }
+
+        private static byte[] DecompressPayload(byte[] buffer, int offset, int count)
+        {
+            // Try with zlib header first
             try
             {
-                using (var ms = new MemoryStream(slice))
+                using (var ms = new MemoryStream(buffer, offset, count))
                 using (var ds = new DeflateStream(ms, CompressionMode.Decompress))
                 using (var outMs = new MemoryStream())
                 {
@@ -167,28 +206,25 @@ namespace RagnaPHPatcher
             }
             catch
             {
-                // Possibly zlib header present - skip first two bytes
             }
 
-            if (slice.Length > 2)
+            if (count <= 2)
+                throw new InvalidDataException("decompression failed");
+
+            try
             {
-                try
+                using (var ms = new MemoryStream(buffer, offset + 2, count - 2))
+                using (var ds = new DeflateStream(ms, CompressionMode.Decompress))
+                using (var outMs = new MemoryStream())
                 {
-                    using (var ms = new MemoryStream(slice, 2, slice.Length - 2))
-                    using (var ds = new DeflateStream(ms, CompressionMode.Decompress))
-                    using (var outMs = new MemoryStream())
-                    {
-                        ds.CopyTo(outMs);
-                        return outMs.ToArray();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    throw new InvalidDataException("payload decompression failed", ex);
+                    ds.CopyTo(outMs);
+                    return outMs.ToArray();
                 }
             }
-
-            throw new InvalidDataException("payload decompression failed");
+            catch (Exception ex)
+            {
+                throw new InvalidDataException("decompression failed", ex);
+            }
         }
 
         private static string ReadCString(BinaryReader br)
