@@ -40,10 +40,14 @@ namespace RagnaPHPatcher
             public byte[] Data { get; }
         }
 
+        public string TargetGrf { get; }
+        public byte PatchMode { get; }
         public IReadOnlyList<ThorEntry> Entries { get; }
 
-        private ThorArchive(List<ThorEntry> entries)
+        private ThorArchive(string targetGrf, byte patchMode, List<ThorEntry> entries)
         {
+            TargetGrf = targetGrf;
+            PatchMode = patchMode;
             Entries = entries;
         }
 
@@ -70,6 +74,36 @@ namespace RagnaPHPatcher
                 long payloadEnd = (long)payloadOffset + payloadSize;
                 if (payloadOffset < 0 || payloadSize < 0 || payloadEnd > fs.Length)
                     throw new InvalidDataException("Invalid .thor payload region.");
+
+                // Extract metadata between the header and payload so we can expose
+                // information such as the intended GRF target and patch mode.  The
+                // layout of this section varies between tools but is always located
+                // immediately before the payload.
+                string targetGrf = string.Empty;
+                byte patchMode = 0;
+                int metaLength = payloadOffset - (int)fs.Position;
+                if (metaLength < 0)
+                    throw new InvalidDataException("Invalid .thor header region.");
+                if (metaLength > 0)
+                {
+                    var metaBytes = br.ReadBytes(metaLength);
+                    using (var metaMs = new MemoryStream(metaBytes))
+                    using (var metaBr = new BinaryReader(metaMs, Encoding.ASCII))
+                    {
+                        var sb = new List<byte>();
+                        while (metaMs.Position < metaMs.Length)
+                        {
+                            byte b = metaBr.ReadByte();
+                            if (b == 0)
+                                break;
+                            sb.Add(b);
+                        }
+                        if (sb.Count > 0)
+                            targetGrf = Encoding.ASCII.GetString(sb.ToArray());
+                        if (metaMs.Position < metaMs.Length)
+                            patchMode = metaBr.ReadByte();
+                    }
+                }
 
                 // Read only the specified payload slice before decompressing.
                 fs.Position = payloadOffset;
@@ -119,7 +153,7 @@ namespace RagnaPHPatcher
                             }
                         }
 
-                        return new ThorArchive(entries);
+                        return new ThorArchive(targetGrf, patchMode, entries);
                     }
                 }
             }

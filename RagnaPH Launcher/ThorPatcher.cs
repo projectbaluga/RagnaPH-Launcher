@@ -65,7 +65,8 @@ namespace RagnaPHPatcher
             foreach (var entry in archive.Entries)
             {
                 var normalised = NormalizePath(entry.Path);
-                if (string.IsNullOrEmpty(normalised))
+                if (string.IsNullOrEmpty(normalised) ||
+                    !normalised.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 if (entry.TargetIsGrf)
@@ -116,7 +117,8 @@ namespace RagnaPHPatcher
             }
             var arr = stack.ToArray();
             Array.Reverse(arr);
-            return string.Join("/", arr);
+            var joined = string.Join("/", arr);
+            return joined.IndexOfAny(Path.GetInvalidPathChars()) >= 0 ? null : joined;
         }
     }
 }

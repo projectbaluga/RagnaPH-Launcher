@@ -187,7 +187,12 @@ namespace RagnaPHPatcher
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
-                            ThorPatcher.ApplyPatch(finalPath, grfPath);
+                            var thorProgress = new Progress<ThorPatcher.PatchProgress>(p =>
+                            {
+                                PatcherProgressBar.Value = p.Count > 0 ? (int)((p.Index / (double)p.Count) * 100) : 0;
+                                ProgressText.Text = $"Patching: {p.Path} ({p.Index}/{p.Count})";
+                            });
+                            ThorPatcher.ApplyPatch(finalPath, grfPath, thorProgress);
                             File.Delete(finalPath);
                         }
                         catch (Exception ex)
@@ -356,7 +361,12 @@ namespace RagnaPHPatcher
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
-                            ThorPatcher.ApplyPatch(finalPath, grfPath);
+                            var thorProgress = new Progress<ThorPatcher.PatchProgress>(p =>
+                            {
+                                PatcherProgressBar.Value = p.Count > 0 ? (int)((p.Index / (double)p.Count) * 100) : 0;
+                                ProgressText.Text = $"Patching: {p.Path} ({p.Index}/{p.Count})";
+                            });
+                            ThorPatcher.ApplyPatch(finalPath, grfPath, thorProgress);
                             File.Delete(finalPath);
                         }
                         catch (Exception ex)
