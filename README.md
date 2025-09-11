@@ -52,6 +52,23 @@ Key components inside `src/RagnaPH.Patching` include:
 - `PatchStateStore` – tracks applied patch IDs in a JSON file.
 - `PatchEngine` – orchestrates downloading and applying patches while raising progress events for the UI.
 
+### Patching Workflow
+
+1. **Configuration and Setup**  
+   `PatchConfig` defines patch settings such as mirrors, retry policies, and GRF options. `PatchConfigLoader` reads `patcher.config.json` and ensures at least one server is present before returning the configuration.
+
+2. **Discovering Available Patches**  
+   `HttpPatchSource` cycles through the configured mirrors, retrieving `plist.txt` until one succeeds. `PatchListParser` splits each line and constructs a `PatchPlan` containing patch jobs and the highest remote patch ID.
+
+3. **Downloading Patch Archives**  
+   `HttpPatchDownloader` saves `.thor` files to a temporary folder, retrying failures with backoff. When size and SHA‑256 metadata are provided it verifies them before returning the path.
+
+4. **Applying Patches**  
+   `PatchEngine` orders jobs by ID, skips those already recorded, downloads each archive, reads its manifest via an `IThorReader`, selects the target GRF, and performs file additions or deletions. Optional index rebuilds and integrity checks run according to configuration before the job is marked applied.
+
+5. **State Tracking**  
+   `PatchStateStore` persists applied patch IDs atomically in JSON so future runs only download missing updates.
+
 ## 🧪 Testing
 
 The test suite validates patch parsing, downloads, and state handling:
@@ -104,6 +121,38 @@ The patching engine also reads a local JSON file to determine patch servers and 
 ```
 
 These values correspond to the `PatchConfig` model in `src/RagnaPH.Patching` and can be customised for different patch hosts and installation locations.
+
+## 🌐 Setting Up a Patch Server
+
+1. **Prepare Patch Files**  
+   Create `.thor` archives for each update using a Thor-compatible packing tool.
+
+2. **Create `plist.txt`**  
+   List patches in order using the format `id,filename[,size][,sha256][,targetGrf]`. Example:
+
+   ```
+   1,patch_0001.thor,12345,0f4d...,data.grf
+   2,patch_0002.thor
+   ```
+
+3. **Host Files**  
+   Serve `plist.txt` and the patch archives over HTTP(S) using any static host (Nginx, Apache, S3, etc.).
+
+4. **Configure the Launcher**  
+   Add your server under `web.patchServers` in `patcher.config.json`:
+
+   ```json
+   {
+     "name": "myserver",
+     "plistUrl": "https://patch.example.com/plist.txt",
+     "patchUrl": "https://patch.example.com/patches/"
+   }
+   ```
+
+   Multiple entries provide mirrors; the launcher tries each until one returns a valid `plist.txt`.
+
+5. **Deploy**  
+   Upload the files and ensure the launcher points to the correct URLs. It will download `plist.txt`, compare applied IDs, and fetch any missing patches from your server.
 
 ## 📸 UI Overview
 
