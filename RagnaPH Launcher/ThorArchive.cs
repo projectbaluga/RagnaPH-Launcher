@@ -61,15 +61,17 @@ namespace RagnaPHPatcher
                     headerMagic[2] != 'S' || headerMagic[3] != 'F')
                     throw new InvalidDataException("Invalid .thor file header.");
 
-                // The ASSF header stores the payload offset and size as little-endian Int32 values.
-                var headerInts = br.ReadBytes(8);
-                if (headerInts.Length != 8)
-                    throw new InvalidDataException("Incomplete .thor file header.");
-
-                int payloadOffset = headerInts[0] | (headerInts[1] << 8) |
-                                    (headerInts[2] << 16) | (headerInts[3] << 24);
-                int payloadSize = headerInts[4] | (headerInts[5] << 8) |
-                                   (headerInts[6] << 16) | (headerInts[7] << 24);
+                // Read payload location and length stored as little-endian Int32 values.
+                int payloadOffset, payloadSize;
+                try
+                {
+                    payloadOffset = br.ReadInt32();
+                    payloadSize = br.ReadInt32();
+                }
+                catch (EndOfStreamException ex)
+                {
+                    throw new InvalidDataException("Incomplete .thor file header.", ex);
+                }
 
                 long payloadEnd = (long)payloadOffset + payloadSize;
                 if (payloadOffset < 0 || payloadSize < 0 || payloadEnd > fs.Length)
