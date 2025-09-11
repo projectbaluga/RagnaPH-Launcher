@@ -1,0 +1,26 @@
+{
+  "web": {
+    "patchServers": [
+      {
+        "name": "primary",
+        "plistUrl": "https://patch.ragna.ph/plist.txt",
+        "patchUrl": "https://patch.ragna.ph/patches/"
+      }
+    ],
+    "timeoutSeconds": 30,
+    "maxParallelDownloads": 3,
+    "retry": { "maxAttempts": 4, "backoffSeconds": [1, 2, 5, 10] }
+  },
+  "patching": {
+    "defaultTargetGrf": "data.grf",
+    "inPlace": false,
+    "checkIntegrity": true,
+    "createGrf": true,
+    "enforceFreeSpaceMB": 512
+  },
+  "paths": {
+    "gameRoot": ".",
+    "downloadTemp": "patch_tmp",
+    "appliedIndex": "patch_state.json"
+  }
+}
