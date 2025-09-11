@@ -89,6 +89,7 @@
     <Compile Include="ThorArchive.cs" />
     <Compile Include="ThorPatcher.cs" />
     <Compile Include="SimpleGrf.cs" />
+    <Compile Include="SafeGrfPatcher.cs" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs">

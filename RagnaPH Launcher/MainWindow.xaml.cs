@@ -200,7 +200,6 @@ namespace RagnaPHPatcher
                                 }
                             });
                             ThorPatcher.ApplyPatch(finalPath, thorProgress);
-                            File.Delete(finalPath);
                         }
                         catch (Exception ex)
                         {
@@ -381,7 +380,6 @@ namespace RagnaPHPatcher
                                 }
                             });
                             ThorPatcher.ApplyPatch(finalPath, thorProgress);
-                            File.Delete(finalPath);
                         }
                         catch (Exception ex)
                         {

@@ -9,6 +9,7 @@ namespace RagnaPHPatcher
     {
         private readonly string _path;
         private readonly Dictionary<string, FileEntry> _entries = new Dictionary<string, FileEntry>(StringComparer.OrdinalIgnoreCase);
+        private bool _headerValid;
 
         private class FileEntry
         {
@@ -24,6 +25,7 @@ namespace RagnaPHPatcher
         public void Load()
         {
             _entries.Clear();
+            _headerValid = false;
             if (!File.Exists(_path))
                 return;
 
@@ -40,6 +42,7 @@ namespace RagnaPHPatcher
                 if (magic.Length != 4 || magic[0] != 'G' || magic[1] != 'R' || magic[2] != 'F' || magic[3] != '2')
                     return;
 
+                _headerValid = true;
                 br.ReadBytes(8); // reserved
                 int count = br.ReadInt32();
                 for (int i = 0; i < count; i++)
@@ -58,6 +61,15 @@ namespace RagnaPHPatcher
         {
             _entries[path.ToLowerInvariant()] = new FileEntry { OriginalPath = path, Data = data };
         }
+
+        public byte[] Read(string path)
+        {
+            return _entries.TryGetValue(path.ToLowerInvariant(), out var entry) ? entry.Data : null;
+        }
+
+        public bool IsHeaderValid => _headerValid;
+
+        public int FileCount => _entries.Count;
 
         public void Save()
         {
