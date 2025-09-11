@@ -1,6 +1,3 @@
-# RagnaPH Launcher — **Comprehensive Patching & Patch-Parsing Prompt**  
-_Use this .md prompt with your code assistant to fully implement a safe, rpatchur-style patcher inside `projectbaluga/RagnaPH-Launcher`._
-
 ---
 
 ## 🎯 Objectives
