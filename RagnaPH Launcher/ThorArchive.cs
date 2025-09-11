@@ -119,59 +119,109 @@ namespace RagnaPHPatcher
 
         private static List<ThorEntry> ParseEntries(byte[] data)
         {
+            const int MinimalRecordSize = 8; // pathLen + dataLen
             var entries = new List<ThorEntry>();
-            using (var ms = new MemoryStream(data))
+
+            using (var ms = new MemoryStream(data, writable: false))
             using (var br = new BinaryReader(ms, Encoding.UTF8, leaveOpen: true))
             {
-                while (ms.Position < ms.Length)
+                int totalLen = data.Length;
+
+                // Detect layout variant by peeking first Int32
+                bool variantB = false;
+                if (totalLen >= 4)
                 {
-                    int pathLen, dataLen;
-                    try
-                    {
-                        pathLen = br.ReadInt32();
-                        dataLen = br.ReadInt32();
-                    }
-                    catch (EndOfStreamException ex)
-                    {
-                        throw new InvalidDataException("entry parse failed", ex);
-                    }
+                    int firstInt = BitConverter.ToInt32(data, 0);
+                    if (firstInt >= 0 && (long)firstInt * MinimalRecordSize + 4 <= totalLen)
+                        variantB = true;
+                }
 
-                    if (pathLen <= 0 || dataLen < 0)
-                        throw new InvalidDataException("entry parse failed");
-
-                    // Optional CRC/flags
-                    long afterLengths = ms.Position;
-                    if (afterLengths + 4 + pathLen + dataLen <= ms.Length)
-                        br.ReadInt32();
-                    else
-                        ms.Position = afterLengths;
-
-                    if (ms.Position + pathLen + dataLen > ms.Length)
-                        throw new InvalidDataException("entry parse failed");
-
-                    var pathBytes = br.ReadBytes(pathLen);
-                    string path;
-                    try
-                    {
-                        path = Encoding.UTF8.GetString(pathBytes);
-                    }
-                    catch (DecoderFallbackException)
-                    {
-                        path = Encoding.GetEncoding(1252).GetString(pathBytes);
-                    }
-
-                    path = NormalizePath(path);
-                    if (string.IsNullOrEmpty(path) || !path.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidDataException("entry path invalid");
-
-                    var fileData = br.ReadBytes(dataLen);
-                    if (fileData.Length != dataLen)
-                        throw new InvalidDataException("entry parse failed");
-
-                    entries.Add(new ThorEntry(path, fileData));
+                if (variantB)
+                {
+                    int count = br.ReadInt32();
+                    for (int i = 0; i < count; i++)
+                        ReadEntry(br, entries, totalLen);
+                }
+                else
+                {
+                    while (ms.Position < ms.Length)
+                        ReadEntry(br, entries, totalLen);
                 }
             }
+
             return entries;
+        }
+
+        private static void ReadEntry(BinaryReader br, List<ThorEntry> entries, int totalLen)
+        {
+            var ms = br.BaseStream;
+
+            long remaining = totalLen - ms.Position;
+            if (remaining < 8)
+                throw new InvalidDataException("entry exceeds remaining bytes");
+
+            int pathLen = br.ReadInt32();
+            int dataLen = br.ReadInt32();
+
+            if (pathLen < 0 || dataLen < 0)
+                throw new InvalidDataException("entry length negative");
+
+            remaining = totalLen - ms.Position;
+            if (remaining < pathLen + dataLen)
+                throw new InvalidDataException("entry exceeds remaining bytes");
+
+            bool hasFlags = remaining >= pathLen + dataLen + 4;
+            if (hasFlags)
+            {
+                // Safe to read because we verified remaining
+                br.ReadInt32();
+            }
+
+            if (totalLen - ms.Position < pathLen + dataLen)
+                throw new InvalidDataException("entry exceeds remaining bytes");
+
+            var pathBytes = br.ReadBytes(pathLen);
+            if (pathBytes.Length != pathLen)
+                throw new InvalidDataException("entry exceeds remaining bytes");
+
+            string path = DecodePath(pathBytes);
+            path = NormalizePath(path);
+            if (string.IsNullOrEmpty(path) || !path.StartsWith("data/", StringComparison.OrdinalIgnoreCase))
+            {
+                // Skip invalid or out-of-scope paths
+                ms.Position += dataLen;
+                return;
+            }
+
+            var fileData = br.ReadBytes(dataLen);
+            if (fileData.Length != dataLen)
+                throw new InvalidDataException("entry exceeds remaining bytes");
+
+            entries.Add(new ThorEntry(path, fileData));
+        }
+
+        private static string DecodePath(byte[] pathBytes)
+        {
+            Encoding[] encodings = new Encoding[]
+            {
+                Encoding.GetEncoding(949, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback), // CP949
+                Encoding.GetEncoding(1252, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback), // Windows-1252
+                new UTF8Encoding(false, true)
+            };
+
+            foreach (var enc in encodings)
+            {
+                try
+                {
+                    return enc.GetString(pathBytes);
+                }
+                catch (DecoderFallbackException)
+                {
+                    // try next encoding
+                }
+            }
+
+            throw new InvalidDataException("entry path undecodable");
         }
 
         private static int FindZlibHeader(byte[] data, int start)
