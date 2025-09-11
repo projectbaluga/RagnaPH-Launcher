@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RagnaPH.Patching", "RagnaPH.Patching\RagnaPH.Patching.csproj", "{2D0B6D69-9E0B-46A8-8347-2A24F9D6C514}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RagnaPH.Patching.Tests", "RagnaPH.Patching.Tests\RagnaPH.Patching.Tests.csproj", "{99B8A0D4-86FB-4132-B9D9-6E2953B11A6F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2D0B6D69-9E0B-46A8-8347-2A24F9D6C514}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2D0B6D69-9E0B-46A8-8347-2A24F9D6C514}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2D0B6D69-9E0B-46A8-8347-2A24F9D6C514}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2D0B6D69-9E0B-46A8-8347-2A24F9D6C514}.Release|Any CPU.Build.0 = Release|Any CPU
+		{99B8A0D4-86FB-4132-B9D9-6E2953B11A6F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{99B8A0D4-86FB-4132-B9D9-6E2953B11A6F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{99B8A0D4-86FB-4132-B9D9-6E2953B11A6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{99B8A0D4-86FB-4132-B9D9-6E2953B11A6F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

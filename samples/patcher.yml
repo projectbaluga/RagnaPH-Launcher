@@ -1,0 +1,26 @@
+window:
+  title: "RagnaPH"
+  play:
+    path: RO.exe
+    arguments: ["-t:1"]
+    exit_on_success: true
+  setup:
+    path: opensetup.exe
+    arguments: []
+    exit_on_success: false
+  web:
+    index_url: https://patch.example.com/ui/index.html
+    preferred_patch_server: ph-main
+    patch_servers:
+      - name: ph-main
+        plist_url: https://cdn.example.com/patch/plist.txt
+        patch_url: https://cdn.example.com/patch/files/
+      - name: ph-backup
+        plist_url: https://backup.example.net/patch/plist.txt
+        patch_url: https://backup.example.net/patch/files/
+client:
+  default_grf_name: data.grf
+  patching:
+    in_place: false
+    check_integrity: true
+    create_grf: false
