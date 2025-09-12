@@ -32,41 +32,58 @@ public sealed class HttpPatchDownloader : IPatchDownloader
         Directory.CreateDirectory(tempDir);
         var destPath = Path.Combine(tempDir, fileName);
 
+        var encodedName = Uri.EscapeDataString(fileName);
+        var candidates = _config.Web.PatchServers
+            .Select(s => new Uri((s.PatchUrl.EndsWith("/") ? s.PatchUrl : s.PatchUrl + "/") + encodedName))
+            .Prepend(job.DownloadUrl)
+            .Select(u => u.ToString())
+            .Distinct()
+            .Select(u => new Uri(u))
+            .ToArray();
+
         for (int attempt = 0; attempt < _config.Web.Retry.MaxAttempts; attempt++)
         {
-            try
+            foreach (var url in candidates)
             {
-                using var response = await _httpClient.GetAsync(job.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
-                response.EnsureSuccessStatusCode();
-
-                using (var fs = File.Create(destPath))
+                try
                 {
-                    await response.Content.CopyToAsync(fs);
-                }
+                    using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+                    response.EnsureSuccessStatusCode();
 
-                if (job.SizeBytes.HasValue)
+                    using (var fs = File.Create(destPath))
+                    {
+                        await response.Content.CopyToAsync(fs);
+                    }
+
+                    if (job.SizeBytes.HasValue)
+                    {
+                        var size = new FileInfo(destPath).Length;
+                        if (size != job.SizeBytes.Value)
+                            throw new InvalidDataException($"Size mismatch for {job.FileName}.");
+                    }
+
+                    if (!string.IsNullOrEmpty(job.Sha256))
+                    {
+                        using var stream = File.OpenRead(destPath);
+                        using var sha = SHA256.Create();
+                        var hash = sha.ComputeHash(stream);
+                        var hex = BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
+                        if (!string.Equals(hex, job.Sha256, StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidDataException($"Checksum mismatch for {job.FileName}.");
+                    }
+
+                    return destPath;
+                }
+                catch (Exception) when (!(ct.IsCancellationRequested))
                 {
-                    var size = new FileInfo(destPath).Length;
-                    if (size != job.SizeBytes.Value)
-                        throw new InvalidDataException($"Size mismatch for {job.FileName}.");
+                    if (File.Exists(destPath))
+                        File.Delete(destPath);
+                    // try next mirror
                 }
-
-                if (!string.IsNullOrEmpty(job.Sha256))
-                {
-                    using var stream = File.OpenRead(destPath);
-                    using var sha = SHA256.Create();
-                    var hash = sha.ComputeHash(stream);
-                    var hex = BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
-                    if (!string.Equals(hex, job.Sha256, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidDataException($"Checksum mismatch for {job.FileName}.");
-                }
-
-                return destPath;
             }
-            catch (Exception) when (attempt + 1 < _config.Web.Retry.MaxAttempts)
+
+            if (attempt + 1 < _config.Web.Retry.MaxAttempts)
             {
-                if (File.Exists(destPath))
-                    File.Delete(destPath);
                 var delay = attempt < _config.Web.Retry.BackoffSeconds.Length
                     ? _config.Web.Retry.BackoffSeconds[attempt]
                     : _config.Web.Retry.BackoffSeconds.LastOrDefault();
@@ -75,7 +92,7 @@ public sealed class HttpPatchDownloader : IPatchDownloader
             }
         }
 
-        throw new HttpRequestException($"Failed to download {job.FileName} after {_config.Web.Retry.MaxAttempts} attempts.");
+        throw new HttpRequestException($"Failed to download {job.FileName} from all servers after {_config.Web.Retry.MaxAttempts} attempts.");
     }
 }
 
