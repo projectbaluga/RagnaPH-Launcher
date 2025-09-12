@@ -22,7 +22,14 @@ public sealed class PatchStateStore
         if (!File.Exists(_path))
             return new PatchState(0, new());
 
-        var json = await File.ReadAllTextAsync(_path, ct);
+        ct.ThrowIfCancellationRequested();
+        string json;
+        using (var fs = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))
+        using (var reader = new StreamReader(fs))
+        {
+            json = await reader.ReadToEndAsync();
+        }
+
         var state = JsonConvert.DeserializeObject<PatchState>(json);
         return state ?? new PatchState(0, new());
     }
@@ -31,7 +38,13 @@ public sealed class PatchStateStore
     {
         var tempPath = _path + ".new";
         var json = JsonConvert.SerializeObject(state);
-        await File.WriteAllTextAsync(tempPath, json, ct);
+
+        ct.ThrowIfCancellationRequested();
+        using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+        using (var writer = new StreamWriter(fs))
+        {
+            await writer.WriteAsync(json);
+        }
         if (File.Exists(_path))
             File.Delete(_path);
         File.Move(tempPath, _path);
