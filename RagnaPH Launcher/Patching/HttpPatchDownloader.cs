@@ -24,17 +24,18 @@ public sealed class HttpPatchDownloader : IPatchDownloader
 
     public async Task<string> DownloadAsync(PatchJob job, CancellationToken ct)
     {
-        var fileName = Path.GetFileName(job.FileName);
-        if (!string.Equals(fileName, job.FileName, StringComparison.Ordinal))
-            throw new InvalidDataException("Invalid patch file name.");
+        var (fileName, encodedName) = PatchNameUtils.Normalize(job.FileName);
 
         var tempDir = _config.Paths.DownloadTemp;
         Directory.CreateDirectory(tempDir);
         var destPath = Path.Combine(tempDir, fileName);
 
-        var encodedName = Uri.EscapeDataString(fileName);
         var candidates = _config.Web.PatchServers
-            .Select(s => new Uri((s.PatchUrl.EndsWith("/") ? s.PatchUrl : s.PatchUrl + "/") + encodedName))
+            .Select(s =>
+            {
+                var baseUri = s.PatchUrl.EndsWith("/") ? s.PatchUrl : s.PatchUrl + "/";
+                return new Uri(new Uri(baseUri), encodedName);
+            })
             .Prepend(job.DownloadUrl)
             .Select(u => u.ToString())
             .Distinct()

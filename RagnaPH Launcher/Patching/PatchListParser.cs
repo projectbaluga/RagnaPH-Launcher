@@ -84,12 +84,12 @@ public static class PatchListParser
                     target = seg.Substring(7);
             }
 
-            var baseUrl = patchBaseUrl.EndsWith("/") ? patchBaseUrl : patchBaseUrl + "/";
-            var decodedName = Uri.UnescapeDataString(fileName);
-            var encodedName = Uri.EscapeDataString(decodedName);
-            // Construct the URL using the already encoded file name to avoid double encoding
-            var url = new Uri(baseUrl + encodedName);
-            jobs.Add(new PatchJob(id, fileName, url, target, size, sha));
+            var (decodedName, encodedName) = PatchNameUtils.Normalize(fileName);
+            var baseUri = patchBaseUrl.EndsWith("/") ? patchBaseUrl : patchBaseUrl + "/";
+            // Construct the URL using the canonical encoded name to avoid double encoding
+            var url = new Uri(new Uri(baseUri), encodedName);
+            // Store the decoded name so consumers don't accidentally double-encode
+            jobs.Add(new PatchJob(id, decodedName, url, target, size, sha));
         }
 
         var highest = jobs.Count == 0 ? 0 : jobs.Max(j => j.Id);
