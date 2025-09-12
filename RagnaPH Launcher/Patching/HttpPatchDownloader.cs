@@ -44,6 +44,20 @@ public sealed class HttpPatchDownloader : IPatchDownloader
                 {
                     var cacheDir = Path.Combine(Path.GetTempPath(), "PatchCache");
                     var path = await PatchDownloader.DownloadThorAsync(url, cacheDir, ct);
+                    // Validate that the downloaded file is a real THOR archive.
+                    try
+                    {
+                        using var reader = new ThorReader();
+                        await reader.ReadManifestAsync(path, ct);
+                    }
+                    catch (InvalidDataException ex)
+                    {
+                        // Remove the invalid file so subsequent retries don't reuse it.
+                        try { File.Delete(path); } catch { /* ignore */ }
+                        throw new InvalidDataException(
+                            $"Downloaded file from {url} is not a valid THOR archive. " +
+                            "Verify or rebuild the patch using GRFEditor or rpatchur.", ex);
+                    }
 
                     if (job.SizeBytes.HasValue)
                     {
