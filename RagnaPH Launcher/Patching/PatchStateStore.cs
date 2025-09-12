@@ -22,7 +22,7 @@ public sealed class PatchStateStore
         if (!File.Exists(_path))
             return new PatchState(0, new());
 
-        await using var stream = File.OpenRead(_path);
+        using var stream = File.OpenRead(_path);
         var state = await JsonSerializer.DeserializeAsync<PatchState>(stream, cancellationToken: ct);
         return state ?? new PatchState(0, new());
     }
@@ -30,10 +30,12 @@ public sealed class PatchStateStore
     public async Task SaveAsync(PatchState state, CancellationToken ct = default)
     {
         var tempPath = _path + ".new";
-        await using (var stream = File.Create(tempPath))
+        using (var stream = File.Create(tempPath))
         {
             await JsonSerializer.SerializeAsync(stream, state, cancellationToken: ct);
         }
-        File.Move(tempPath, _path, overwrite: true);
+        if (File.Exists(_path))
+            File.Delete(_path);
+        File.Move(tempPath, _path);
     }
 }

@@ -9,7 +9,7 @@
     <RootNamespace>RagnaPH_Launcher</RootNamespace>
     <AssemblyName>RagnaPH Launcher</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-    <LangVersion>8.0</LangVersion>
+    <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <FileAlignment>512</FileAlignment>
     <ProjectTypeGuids>{60dc8134-eba5-43b8-bcc9-bb4bc16c2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
@@ -86,6 +86,16 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="ThorPatcher.cs" />
+    <Compile Include="Patching\GrfMerger.cs" />
+    <Compile Include="Patching\HttpPatchDownloader.cs" />
+    <Compile Include="Patching\HttpPatchSource.cs" />
+    <Compile Include="Patching\Interfaces.cs" />
+    <Compile Include="Patching\PatchConfig.cs" />
+    <Compile Include="Patching\PatchConfigLoader.cs" />
+    <Compile Include="Patching\PatchEngine.cs" />
+    <Compile Include="Patching\PatchListParser.cs" />
+    <Compile Include="Patching\PatchStateStore.cs" />
+    <Compile Include="IsExternalInit.cs" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs">
@@ -139,6 +149,9 @@
     <PackageReference Include="HtmlAgilityPack" Version="1.12.1" />
     <PackageReference Include="GRF" Version="0.3.1" />
     <PackageReference Include="SharpCompress" Version="0.40.0" />
+    <PackageReference Include="System.Text.Json" Version="8.0.3" />
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -12,7 +12,7 @@ public static class PatchConfigLoader
 {
     public static async Task<PatchConfig> LoadAsync(string path, CancellationToken ct = default)
     {
-        await using var stream = File.OpenRead(path);
+        using var stream = File.OpenRead(path);
         var config = await JsonSerializer.DeserializeAsync<PatchConfig>(stream, cancellationToken: ct)
                      ?? throw new InvalidDataException("Invalid patcher configuration.");
 

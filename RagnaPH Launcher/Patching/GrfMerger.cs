@@ -67,10 +67,10 @@ public sealed class GrfMerger
             {
                 if (File.Exists(backupPath))
                     File.Delete(backupPath);
-                File.Move(grfPath, backupPath, true);
+                File.Move(grfPath, backupPath);
             }
 
-            File.Move(tempPath, grfPath, true);
+            File.Move(tempPath, grfPath);
             if (File.Exists(backupPath))
                 File.Delete(backupPath);
         }
