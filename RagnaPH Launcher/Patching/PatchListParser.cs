@@ -55,6 +55,17 @@ public static class PatchListParser
                     if (!idMatch.Success)
                         throw new FormatException($"Cannot determine patch id from '{line}'.");
                     id = int.Parse(idMatch.Value, CultureInfo.InvariantCulture);
+
+                    // Strip the id prefix if it appears at the beginning of the file path
+                    if (filePath.StartsWith(idMatch.Value, StringComparison.Ordinal))
+                    {
+                        filePath = filePath.Substring(idMatch.Value.Length).TrimStart(' ', '\t', '-', '_');
+                    }
+
+                    // Truncate anything following the .thor extension
+                    var thorIdx = filePath.IndexOf(".thor", StringComparison.OrdinalIgnoreCase);
+                    if (thorIdx >= 0)
+                        filePath = filePath.Substring(0, thorIdx + 5);
                 }
 
                 index = 1;
