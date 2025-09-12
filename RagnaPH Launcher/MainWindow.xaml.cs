@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
@@ -45,7 +46,10 @@ namespace RagnaPHPatcher
             if (!baseUrl.EndsWith("/"))
                 baseUrl += "/";
 
-            return baseUrl + relativePath.TrimStart('/');
+            relativePath = relativePath.Replace("\\", "/").TrimStart('/');
+            var segments = relativePath.Split(new[] {'/'}, StringSplitOptions.RemoveEmptyEntries)
+                                      .Select(Uri.EscapeDataString);
+            return baseUrl + string.Join("/", segments);
         }
 
         private void LoadNewsPage()
