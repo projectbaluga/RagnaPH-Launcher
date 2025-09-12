@@ -22,7 +22,7 @@ public sealed class ThorReader : IThorReader
         {
             using var fs = File.OpenRead(thorPath);
             var header = ReadHeader(fs);
-            return Task.FromResult(new ThorManifest(header.TargetGrf, includesChecksums: false));
+            return Task.FromResult(new ThorManifest(header.TargetGrf, IncludesChecksums: false));
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or EndOfStreamException)
         {
