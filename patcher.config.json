@@ -16,6 +16,7 @@
     "inPlace": false,
     "checkIntegrity": true,
     "createGrf": true,
+    "skipBackup": true,
     "enforceFreeSpaceMB": 512
   },
   "paths": {

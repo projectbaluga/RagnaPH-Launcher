@@ -38,15 +38,25 @@ public sealed class GrfMerger
         {
             var inPlaceBackupPath = grfPath + ".bak";
 
-            if (File.Exists(inPlaceBackupPath))
-                File.Delete(inPlaceBackupPath);
+            if (!_config.SkipBackup)
+            {
+                if (File.Exists(inPlaceBackupPath))
+                    File.Delete(inPlaceBackupPath);
 
-            if (File.Exists(grfPath))
-                File.Copy(grfPath, inPlaceBackupPath, true);
-            else if (_config.CreateGrf)
-                using (File.Create(grfPath)) { }
-            else
-                throw new FileNotFoundException(grfPath);
+                if (File.Exists(grfPath))
+                    File.Copy(grfPath, inPlaceBackupPath, true);
+                else if (_config.CreateGrf)
+                    using (File.Create(grfPath)) { }
+                else
+                    throw new FileNotFoundException(grfPath);
+            }
+            else if (!File.Exists(grfPath))
+            {
+                if (_config.CreateGrf)
+                    using (File.Create(grfPath)) { }
+                else
+                    throw new FileNotFoundException(grfPath);
+            }
 
             try
             {
@@ -58,12 +68,12 @@ public sealed class GrfMerger
                 if (verifyIntegrity)
                     await grf.VerifyAsync(ct);
 
-                if (File.Exists(inPlaceBackupPath))
+                if (!_config.SkipBackup && File.Exists(inPlaceBackupPath))
                     File.Delete(inPlaceBackupPath);
             }
             catch
             {
-                if (File.Exists(inPlaceBackupPath))
+                if (!_config.SkipBackup && File.Exists(inPlaceBackupPath))
                 {
                     File.Copy(inPlaceBackupPath, grfPath, true);
                     File.Delete(inPlaceBackupPath);
@@ -104,20 +114,27 @@ public sealed class GrfMerger
 
             if (File.Exists(grfPath))
             {
-                if (File.Exists(backupPath))
-                    File.Delete(backupPath);
-                File.Move(grfPath, backupPath);
+                if (_config.SkipBackup)
+                {
+                    File.Delete(grfPath);
+                }
+                else
+                {
+                    if (File.Exists(backupPath))
+                        File.Delete(backupPath);
+                    File.Move(grfPath, backupPath);
+                }
             }
 
             File.Move(tempPath, grfPath);
-            if (File.Exists(backupPath))
+            if (!_config.SkipBackup && File.Exists(backupPath))
                 File.Delete(backupPath);
         }
         catch
         {
             if (File.Exists(tempPath))
                 File.Delete(tempPath);
-            if (File.Exists(backupPath) && !File.Exists(grfPath))
+            if (!_config.SkipBackup && File.Exists(backupPath) && !File.Exists(grfPath))
                 File.Move(backupPath, grfPath);
             throw;
         }

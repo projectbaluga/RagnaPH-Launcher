@@ -37,7 +37,7 @@ internal static class ThorPatcher
         // Tokei's GRF Editor (https://github.com/Tokeiburu/GRFEditor):
         // a backup is created, changes are applied, then the index is rebuilt
         // before swapping the result back.
-        var config = new PatchingConfig(targetGrf, InPlace: true, CheckIntegrity: true, CreateGrf: true, EnforceFreeSpaceMB: 0);
+        var config = new PatchingConfig(targetGrf, InPlace: true, CheckIntegrity: true, CreateGrf: true, SkipBackup: true, EnforceFreeSpaceMB: 0);
         var merger = new GrfMerger(() => new RealGrfEditor(), config);
 
         await merger.MergeAsync(targetGrf, async grf =>
