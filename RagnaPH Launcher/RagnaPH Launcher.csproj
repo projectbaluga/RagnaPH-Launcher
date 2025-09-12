@@ -165,5 +165,11 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
     <PackageReference Include="SharpZipLib" Version="1.4.2" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Explicit reference to SharpZipLib to ensure availability during cross-platform builds -->
+    <Reference Include="ICSharpCode.SharpZipLib">
+      <HintPath>$(NuGetPackageRoot)sharpziplib/1.4.2/lib/netstandard2.0/ICSharpCode.SharpZipLib.dll</HintPath>
+    </Reference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
