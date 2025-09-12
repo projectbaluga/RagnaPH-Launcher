@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,6 +20,9 @@ public class PatchEngineTests
 
         try
         {
+            var grfFile = Path.Combine(root, "data.grf");
+            File.WriteAllText(grfFile, "old");
+
             var config = new PatchConfig(
                 new WebConfig(new(), 30, 1, new RetryConfig(1, Array.Empty<int>())),
                 new PatchingConfig("data.grf", false, false, true, 0),
@@ -39,7 +41,11 @@ public class PatchEngineTests
             await engine.ApplyPlanAsync(plan, CancellationToken.None);
 
             Assert.NotNull(captured);
-            Assert.Contains("file1.txt", captured!.AddedPaths);
+            Assert.EndsWith(".new", captured!.OpenedPath); // temp file used
+            Assert.True(captured.IndexRebuilt);
+            Assert.Contains("file1.txt", File.ReadAllText(grfFile));
+            Assert.False(File.Exists(grfFile + ".new"));
+            Assert.False(File.Exists(grfFile + ".bak"));
             Assert.Contains(1, (await store.LoadAsync()).AppliedIds);
             Assert.Equal(1, (await store.LoadAsync()).LastAppliedId);
         }
@@ -79,31 +85,38 @@ public class PatchEngineTests
     private sealed class StubGrfEditor : IGrfEditor
     {
         public string? OpenedPath { get; private set; }
-        public List<string> AddedPaths { get; } = new();
-        public List<string> DeletedPaths { get; } = new();
+        public bool IndexRebuilt { get; private set; }
+        private FileStream? _stream;
 
         public Task OpenAsync(string grfPath, bool createIfMissing, CancellationToken ct)
         {
             OpenedPath = grfPath;
+            _stream = new FileStream(grfPath, createIfMissing ? FileMode.OpenOrCreate : FileMode.Open, FileAccess.ReadWrite, FileShare.None);
             return Task.CompletedTask;
         }
 
-        public Task AddOrReplaceAsync(string virtualPath, Stream content, CancellationToken ct)
+        public async Task AddOrReplaceAsync(string virtualPath, Stream content, CancellationToken ct)
         {
-            AddedPaths.Add(virtualPath);
-            return Task.CompletedTask;
+            if (_stream == null) throw new InvalidOperationException();
+            _stream.Seek(0, SeekOrigin.End);
+            using var writer = new StreamWriter(_stream, leaveOpen: true);
+            await writer.WriteAsync(virtualPath);
+            await writer.FlushAsync();
         }
 
-        public Task DeleteAsync(string virtualPath, CancellationToken ct)
+        public Task DeleteAsync(string virtualPath, CancellationToken ct) => Task.CompletedTask;
+        public Task RebuildIndexAsync(CancellationToken ct)
         {
-            DeletedPaths.Add(virtualPath);
+            IndexRebuilt = true;
             return Task.CompletedTask;
         }
-
-        public Task RebuildIndexAsync(CancellationToken ct) => Task.CompletedTask;
         public Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
         public Task VerifyAsync(CancellationToken ct) => Task.CompletedTask;
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            _stream?.Dispose();
+            return ValueTask.CompletedTask;
+        }
     }
 }
 

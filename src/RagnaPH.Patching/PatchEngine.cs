@@ -71,36 +71,30 @@ public sealed class PatchEngine : IPatchEngine
         var targetGrf = job.TargetGrf ?? manifest.TargetGrf ?? _config.Patching.DefaultTargetGrf;
         var grfPath = Path.Combine(_config.Paths.GameRoot, targetGrf);
 
-        await using var grf = _grfFactory();
-        await grf.OpenAsync(grfPath, _config.Patching.CreateGrf, ct);
+        var merger = new GrfMerger(_grfFactory, _config.Patching);
 
-        await foreach (var entry in thor.ReadEntriesAsync(path, ct))
+        await merger.MergeAsync(grfPath, async grf =>
         {
-            Report("apply", job.Id, null, null);
-            switch (entry.Kind)
+            await foreach (var entry in thor.ReadEntriesAsync(path, ct))
             {
-                case ThorEntryKind.File:
-                    await using (var stream = await entry.OpenStreamAsync())
-                    {
-                        await grf.AddOrReplaceAsync(entry.VirtualPath, stream, ct);
-                    }
-                    break;
-                case ThorEntryKind.Delete:
-                    await grf.DeleteAsync(entry.VirtualPath, ct);
-                    break;
-                case ThorEntryKind.Directory:
-                    // directories are implied in GRF
-                    break;
+                Report("apply", job.Id, null, null);
+                switch (entry.Kind)
+                {
+                    case ThorEntryKind.File:
+                        await using (var stream = await entry.OpenStreamAsync())
+                        {
+                            await grf.AddOrReplaceAsync(entry.VirtualPath, stream, ct);
+                        }
+                        break;
+                    case ThorEntryKind.Delete:
+                        await grf.DeleteAsync(entry.VirtualPath, ct);
+                        break;
+                    case ThorEntryKind.Directory:
+                        // directories are implied in GRF
+                        break;
+                }
             }
-        }
-
-        if (_config.Patching.InPlace)
-            await grf.RebuildIndexAsync(ct);
-
-        await grf.FlushAsync(ct);
-
-        if (_config.Patching.CheckIntegrity && manifest.IncludesChecksums)
-            await grf.VerifyAsync(ct);
+        }, _config.Patching.CheckIntegrity && manifest.IncludesChecksums, ct);
 
         state.AppliedIds.Add(job.Id);
         state = state with { LastAppliedId = Math.Max(state.LastAppliedId, job.Id) };
