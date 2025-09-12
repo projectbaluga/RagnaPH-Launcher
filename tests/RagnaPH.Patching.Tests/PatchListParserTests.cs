@@ -23,4 +23,17 @@ patch_0003.thor
         Assert.Equal(1048576, plan.Jobs.First().SizeBytes);
         Assert.Equal(3, plan.Jobs[2].Id);
     }
+
+    [Fact]
+    public void ParsesSpaceSeparatedIdAndFileName()
+    {
+        const string plist = "001 patch1.0 - item description fix.thor";
+
+        var plan = PatchListParser.Parse(plist, "http://example/patcher/");
+
+        Assert.Single(plan.Jobs);
+        Assert.Equal(1, plan.Jobs[0].Id);
+        Assert.Equal("patch1.0 - item description fix.thor", plan.Jobs[0].FileName);
+        Assert.Equal(new Uri("http://example/patcher/patch1.0%20-%20item%20description%20fix.thor"), plan.Jobs[0].DownloadUrl);
+    }
 }

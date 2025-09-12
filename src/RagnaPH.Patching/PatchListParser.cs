@@ -36,11 +36,21 @@ public static class PatchListParser
             }
             else
             {
-                fileName = parts[0];
-                var m = IdFromFileName.Match(fileName);
-                if (!m.Success)
-                    throw new FormatException($"Cannot determine patch id from '{line}'.");
-                id = int.Parse(m.Value, CultureInfo.InvariantCulture);
+                var candidate = parts[0];
+                var spaceIdx = candidate.IndexOf(' ');
+                if (parts.Length == 1 && spaceIdx > 0 && int.TryParse(candidate.Substring(0, spaceIdx), NumberStyles.Integer, CultureInfo.InvariantCulture, out var spacedId))
+                {
+                    id = spacedId;
+                    fileName = candidate.Substring(spaceIdx + 1);
+                }
+                else
+                {
+                    fileName = candidate;
+                    var m = IdFromFileName.Match(fileName);
+                    if (!m.Success)
+                        throw new FormatException($"Cannot determine patch id from '{line}'.");
+                    id = int.Parse(m.Value, CultureInfo.InvariantCulture);
+                }
                 index = 1;
             }
 
