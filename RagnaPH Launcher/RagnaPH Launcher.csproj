@@ -107,6 +107,7 @@
     <Compile Include="Patching\PatchStateStore.cs" />
     <Compile Include="Patching\JsonConvertShim.cs" />
     <Compile Include="Patching\MockGrfEditor.cs" />
+    <Compile Include="Patching\RealGrfEditor.cs" />
     <Compile Include="Patching\ThorReader.cs" />
     <Compile Include="IsExternalInit.cs" />
   </ItemGroup>
