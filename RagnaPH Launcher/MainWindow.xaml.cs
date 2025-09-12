@@ -40,6 +40,14 @@ namespace RagnaPHPatcher
             return errors == SslPolicyErrors.None;
         }
 
+        private static string CombineUrl(string baseUrl, string relativePath)
+        {
+            if (!baseUrl.EndsWith("/"))
+                baseUrl += "/";
+
+            return baseUrl + relativePath.TrimStart('/');
+        }
+
         private void LoadNewsPage()
         {
             NewsWebBrowser.Navigate("https://ragna.ph/?module=news");
@@ -108,12 +116,14 @@ namespace RagnaPHPatcher
             string[] patchFiles;
             try
             {
-                string patchListContent = await Http.GetStringAsync(fileUrl + patchListFile);
+                string patchListUrl = CombineUrl(fileUrl, patchListFile);
+                string patchListContent = await Http.GetStringAsync(patchListUrl);
                 patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Failed to download patch list:\n" + ex.Message, "Patch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Failed to download patch list from " + CombineUrl(fileUrl, patchListFile) + ":\n" + ex.Message,
+                    "Patch Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -131,7 +141,7 @@ namespace RagnaPHPatcher
                 string relativePath = files[i].Trim();
                 if (string.IsNullOrWhiteSpace(relativePath)) continue;
 
-                string url = baseUrl + relativePath.Replace("\\", "/");
+                string url = CombineUrl(baseUrl, relativePath.Replace("\\", "/"));
                 string finalPath = Path.Combine(baseDir, relativePath.Replace("/", "\\"));
 
                 try
@@ -236,12 +246,14 @@ namespace RagnaPHPatcher
             string[] patchFiles;
             try
             {
-                string patchListContent = await Http.GetStringAsync(fileUrl + patchListFile);
+                string patchListUrl = CombineUrl(fileUrl, patchListFile);
+                string patchListContent = await Http.GetStringAsync(patchListUrl);
                 patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Failed to download patch list:\n" + ex.Message, "Check Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Failed to download patch list from " + CombineUrl(fileUrl, patchListFile) + ":\n" + ex.Message,
+                    "Check Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -259,7 +271,7 @@ namespace RagnaPHPatcher
                 string relativePath = files[i].Trim();
                 if (string.IsNullOrWhiteSpace(relativePath)) continue;
 
-                string url = baseUrl + relativePath.Replace("\\", "/");
+                string url = CombineUrl(baseUrl, relativePath.Replace("\\", "/"));
                 string finalPath = Path.Combine(baseDir, relativePath.Replace("/", "\\"));
 
                 try
