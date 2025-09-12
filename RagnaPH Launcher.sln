@@ -5,10 +5,6 @@ VisualStudioVersion = 17.11.35327.3
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RagnaPH Launcher", "RagnaPH Launcher\RagnaPH Launcher.csproj", "{E8CD799F-A814-4B91-8163-59385F706EBA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RagnaPH.Patching", "src\RagnaPH.Patching\RagnaPH.Patching.csproj", "{1BA823FD-3541-498B-A651-1F9D7FAFD1CF}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RagnaPH.Patching.Tests", "tests\RagnaPH.Patching.Tests\RagnaPH.Patching.Tests.csproj", "{05AFFEF9-964E-4AA1-AC63-50E3FCB652D1}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -19,14 +15,6 @@ Global
 		{E8CD799F-A814-4B91-8163-59385F706EBA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E8CD799F-A814-4B91-8163-59385F706EBA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E8CD799F-A814-4B91-8163-59385F706EBA}.Release|Any CPU.Build.0 = Release|Any CPU
-                {1BA823FD-3541-498B-A651-1F9D7FAFD1CF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-                {1BA823FD-3541-498B-A651-1F9D7FAFD1CF}.Debug|Any CPU.Build.0 = Debug|Any CPU
-                {1BA823FD-3541-498B-A651-1F9D7FAFD1CF}.Release|Any CPU.ActiveCfg = Release|Any CPU
-                {1BA823FD-3541-498B-A651-1F9D7FAFD1CF}.Release|Any CPU.Build.0 = Release|Any CPU
-                {05AFFEF9-964E-4AA1-AC63-50E3FCB652D1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-                {05AFFEF9-964E-4AA1-AC63-50E3FCB652D1}.Debug|Any CPU.Build.0 = Debug|Any CPU
-                {05AFFEF9-964E-4AA1-AC63-50E3FCB652D1}.Release|Any CPU.ActiveCfg = Release|Any CPU
-                {05AFFEF9-964E-4AA1-AC63-50E3FCB652D1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

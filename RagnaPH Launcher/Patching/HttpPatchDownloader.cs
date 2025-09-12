@@ -39,7 +39,7 @@ public sealed class HttpPatchDownloader : IPatchDownloader
                 using var response = await _httpClient.GetAsync(job.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
                 response.EnsureSuccessStatusCode();
 
-                await using (var fs = File.Create(destPath))
+                using (var fs = File.Create(destPath))
                 {
                     await response.Content.CopyToAsync(fs, ct);
                 }
@@ -53,9 +53,10 @@ public sealed class HttpPatchDownloader : IPatchDownloader
 
                 if (!string.IsNullOrEmpty(job.Sha256))
                 {
-                    await using var stream = File.OpenRead(destPath);
-                    var hash = await SHA256.HashDataAsync(stream, ct);
-                    var hex = Convert.ToHexString(hash).ToLowerInvariant();
+                    using var stream = File.OpenRead(destPath);
+                    using var sha = SHA256.Create();
+                    var hash = sha.ComputeHash(stream);
+                    var hex = BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
                     if (!string.Equals(hex, job.Sha256, StringComparison.OrdinalIgnoreCase))
                         throw new InvalidDataException($"Checksum mismatch for {job.FileName}.");
                 }
