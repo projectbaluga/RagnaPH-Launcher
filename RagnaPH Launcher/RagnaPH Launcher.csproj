@@ -85,7 +85,6 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="IniFile.cs" />
-    <Compile Include="ThorPatcher.cs" />
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
@@ -99,6 +98,8 @@
     <Compile Include="Patching\PatchEngine.cs" />
     <Compile Include="Patching\PatchListParser.cs" />
     <Compile Include="Patching\PatchNameUtils.cs" />
+    <Compile Include="Patching\PatchDownloadUtils.cs" />
+    <Compile Include="Patching\ThorPatcher.cs" />
     <Compile Include="Patching\PatchStateStore.cs" />
     <Compile Include="Patching\JsonConvertShim.cs" />
     <Compile Include="Patching\MockGrfEditor.cs" />

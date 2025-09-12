@@ -27,13 +27,13 @@ public static class PatchListParser
             for (int i = 0; i < parts.Length; i++)
                 parts[i] = parts[i].Trim();
             int id;
-            string fileName;
+            string filePath;
             int index = 0;
 
             if (parts.Length > 1 && int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedId))
             {
                 id = parsedId;
-                fileName = parts[1];
+                filePath = parts[1];
                 index = 2;
             }
             else
@@ -46,12 +46,12 @@ public static class PatchListParser
                     if (m.Success)
                     {
                         id = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
-                        fileName = m.Groups[2].Value;
+                        filePath = m.Groups[2].Value;
                     }
                     else
                     {
-                        fileName = candidate;
-                        var idMatch = IdFromFileName.Match(fileName);
+                        filePath = candidate;
+                        var idMatch = IdFromFileName.Match(filePath);
                         if (!idMatch.Success)
                             throw new FormatException($"Cannot determine patch id from '{line}'.");
                         id = int.Parse(idMatch.Value, CultureInfo.InvariantCulture);
@@ -59,8 +59,8 @@ public static class PatchListParser
                 }
                 else
                 {
-                    fileName = candidate;
-                    var idMatch = IdFromFileName.Match(fileName);
+                    filePath = candidate;
+                    var idMatch = IdFromFileName.Match(filePath);
                     if (!idMatch.Success)
                         throw new FormatException($"Cannot determine patch id from '{line}'.");
                     id = int.Parse(idMatch.Value, CultureInfo.InvariantCulture);
@@ -82,14 +82,16 @@ public static class PatchListParser
                     sha = seg.Substring(7);
                 else if (seg.StartsWith("target:"))
                     target = seg.Substring(7);
+                else if (seg.EndsWith(".thor", StringComparison.OrdinalIgnoreCase))
+                    filePath = seg;
             }
 
-            var (decodedName, encodedName) = PatchNameUtils.Normalize(fileName);
+            // Normalize the path without encoding; encoding is handled when
+            // constructing the final URI.
+            var normalizedPath = PatchNameUtils.NormalizePath(filePath);
             var baseUri = patchBaseUrl.EndsWith("/") ? patchBaseUrl : patchBaseUrl + "/";
-            // Construct the URL using the canonical encoded name to avoid double encoding
-            var url = new Uri(new Uri(baseUri), encodedName);
-            // Store the decoded name so consumers don't accidentally double-encode
-            jobs.Add(new PatchJob(id, decodedName, url, target, size, sha));
+            var url = PatchDownloadUtils.BuildPatchUri(new Uri(baseUri), normalizedPath);
+            jobs.Add(new PatchJob(id, normalizedPath, url, target, size, sha));
         }
 
         var highest = jobs.Count == 0 ? 0 : jobs.Max(j => j.Id);

@@ -39,4 +39,33 @@ internal static class PatchNameUtils
             throw new InvalidDataException("Malformed patch file name.", ex);
         }
     }
+
+    /// <summary>
+    /// Normalizes a relative patch path which may contain directory segments.
+    /// Each segment is validated using <see cref="Normalize"/> and the
+    /// sanitized segments are re-joined using forward slashes.
+    /// </summary>
+    /// <param name="path">The raw path from the patch manifest.</param>
+    /// <returns>The normalized path using '/' separators.</returns>
+    public static string NormalizePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new InvalidDataException("Patch path is empty.");
+
+        // Split on both separators and remove empty segments to handle
+        // accidental leading/trailing slashes.
+        var segments = path.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+            throw new InvalidDataException("Patch path is empty.");
+
+        for (int i = 0; i < segments.Length; i++)
+        {
+            // Validate each segment as a file name. We only keep the decoded
+            // representation; encoding is performed when building the URI.
+            var (decoded, _) = Normalize(segments[i]);
+            segments[i] = decoded;
+        }
+
+        return string.Join('/', segments);
+    }
 }

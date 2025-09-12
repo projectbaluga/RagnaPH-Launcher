@@ -13,28 +13,24 @@ namespace RagnaPH.Patching;
 /// </summary>
 public sealed class HttpPatchDownloader : IPatchDownloader
 {
-    private readonly HttpClient _httpClient;
     private readonly PatchConfig _config;
 
     public HttpPatchDownloader(HttpClient httpClient, PatchConfig config)
     {
-        _httpClient = httpClient;
+        // The provided HttpClient is kept for backward compatibility but the
+        // new implementation uses a dedicated client in
+        // <see cref="PatchDownloadUtils"/>. Having the parameter ensures DI
+        // setups continue to work without modifications.
         _config = config;
     }
 
     public async Task<string> DownloadAsync(PatchJob job, CancellationToken ct)
     {
-        var (fileName, encodedName) = PatchNameUtils.Normalize(job.FileName);
-
-        var tempDir = _config.Paths.DownloadTemp;
-        Directory.CreateDirectory(tempDir);
-        var destPath = Path.Combine(tempDir, fileName);
-
         var candidates = _config.Web.PatchServers
             .Select(s =>
             {
                 var baseUri = s.PatchUrl.EndsWith("/") ? s.PatchUrl : s.PatchUrl + "/";
-                return new Uri(new Uri(baseUri), encodedName);
+                return PatchDownloadUtils.BuildPatchUri(new Uri(baseUri), job.FileName);
             })
             .Prepend(job.DownloadUrl)
             .Select(u => u.ToString())
@@ -48,24 +44,20 @@ public sealed class HttpPatchDownloader : IPatchDownloader
             {
                 try
                 {
-                    using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-                    response.EnsureSuccessStatusCode();
-
-                    using (var fs = File.Create(destPath))
-                    {
-                        await response.Content.CopyToAsync(fs);
-                    }
+                    var path = await PatchDownloadUtils.DownloadToTempAsync(url, ct);
+                    if (path == null)
+                        continue;
 
                     if (job.SizeBytes.HasValue)
                     {
-                        var size = new FileInfo(destPath).Length;
+                        var size = new FileInfo(path).Length;
                         if (size != job.SizeBytes.Value)
                             throw new InvalidDataException($"Size mismatch for {job.FileName}.");
                     }
 
                     if (!string.IsNullOrEmpty(job.Sha256))
                     {
-                        using var stream = File.OpenRead(destPath);
+                        using var stream = File.OpenRead(path);
                         using var sha = SHA256.Create();
                         var hash = sha.ComputeHash(stream);
                         var hex = BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
@@ -73,12 +65,10 @@ public sealed class HttpPatchDownloader : IPatchDownloader
                             throw new InvalidDataException($"Checksum mismatch for {job.FileName}.");
                     }
 
-                    return destPath;
+                    return path;
                 }
                 catch (Exception) when (!(ct.IsCancellationRequested))
                 {
-                    if (File.Exists(destPath))
-                        File.Delete(destPath);
                     // try next mirror
                 }
             }
