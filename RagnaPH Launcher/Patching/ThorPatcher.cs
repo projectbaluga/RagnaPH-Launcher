@@ -109,6 +109,9 @@ internal static class ThorPatcher
     /// not perform real GRF table updates. It is sufficient for basic tests but
     /// should be replaced with a full implementation for production use.
     /// </summary>
+    public static void ApplyPatch(string thorPath, string grfPath)
+        => ApplyThorTransactional(thorPath, grfPath);
+
     public static void ApplyThorTransactional(string thorPath, string grfPath)
     {
         var txnPath = grfPath + ".__txn";
@@ -117,8 +120,10 @@ internal static class ThorPatcher
         File.Copy(grfPath, txnPath, true);
         try
         {
-            File.Move(grfPath, bakPath, true);
-            File.Move(txnPath, grfPath, true);
+            if (File.Exists(bakPath))
+                File.Delete(bakPath);
+            File.Move(grfPath, bakPath);
+            File.Move(txnPath, grfPath);
             File.Delete(bakPath);
         }
         catch
