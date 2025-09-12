@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
-using System.Net;
+using System.Net.Http;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -11,11 +13,31 @@ namespace RagnaPHPatcher
 {
     public partial class MainWindow : Window
     {
+        private static readonly HttpClient Http = CreateHttpClient();
+
         public MainWindow()
         {
             InitializeComponent();
             LoadNewsPage();
             StartPatching();
+        }
+
+        private static HttpClient CreateHttpClient()
+        {
+            var handler = new HttpClientHandler();
+            handler.ServerCertificateCustomValidationCallback = ValidateCertificate;
+            return new HttpClient(handler);
+        }
+
+        private static bool ValidateCertificate(HttpRequestMessage request, X509Certificate2? cert, X509Chain? chain, SslPolicyErrors errors)
+        {
+            if (request.RequestUri?.Host.Equals("ragna.ph", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                // Accept the certificate for the patch host even if it is self-signed
+                return true;
+            }
+
+            return errors == SslPolicyErrors.None;
         }
 
         private void LoadNewsPage()
@@ -57,8 +79,7 @@ namespace RagnaPHPatcher
 
             try
             {
-                WebClient wc = new WebClient();
-                string iniContent = await Task.Run(() => wc.DownloadString("https://bojexgames.com/patcher/config.ini"));
+                string iniContent = await Http.GetStringAsync("https://ragna.ph/patcher/config.ini");
                 string[] lines = iniContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
                 config = new IniFile(lines);
             }
@@ -87,8 +108,7 @@ namespace RagnaPHPatcher
             string[] patchFiles;
             try
             {
-                WebClient wc = new WebClient();
-                string patchListContent = await Task.Run(() => wc.DownloadString(fileUrl + patchListFile));
+                string patchListContent = await Http.GetStringAsync(fileUrl + patchListFile);
                 patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
             }
             catch (Exception ex)
@@ -119,11 +139,8 @@ namespace RagnaPHPatcher
                     string finalDir = Path.GetDirectoryName(finalPath);
                     if (!Directory.Exists(finalDir)) Directory.CreateDirectory(finalDir);
 
-                    using (WebClient wc = new WebClient())
-                    {
-                        byte[] data = await Task.Run(() => wc.DownloadData(url));
-                        File.WriteAllBytes(finalPath, data);
-                    }
+                    byte[] data = await Http.GetByteArrayAsync(url);
+                    File.WriteAllBytes(finalPath, data);
 
                     if (Path.GetExtension(finalPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
                     {
@@ -203,8 +220,7 @@ namespace RagnaPHPatcher
 
             try
             {
-                WebClient wc = new WebClient();
-                string iniContent = await Task.Run(() => wc.DownloadString("https://bojexgames.com/patcher/config.ini"));
+                string iniContent = await Http.GetStringAsync("https://ragna.ph/patcher/config.ini");
                 string[] lines = iniContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
                 config = new IniFile(lines);
             }
@@ -220,8 +236,7 @@ namespace RagnaPHPatcher
             string[] patchFiles;
             try
             {
-                WebClient wc = new WebClient();
-                string patchListContent = await Task.Run(() => wc.DownloadString(fileUrl + patchListFile));
+                string patchListContent = await Http.GetStringAsync(fileUrl + patchListFile);
                 patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
             }
             catch (Exception ex)
@@ -255,11 +270,8 @@ namespace RagnaPHPatcher
                         string finalDir = Path.GetDirectoryName(finalPath);
                         if (!Directory.Exists(finalDir)) Directory.CreateDirectory(finalDir);
 
-                        using (WebClient wc = new WebClient())
-                        {
-                            byte[] data = await Task.Run(() => wc.DownloadData(url));
-                            File.WriteAllBytes(finalPath, data);
-                        }
+                        byte[] data = await Http.GetByteArrayAsync(url);
+                        File.WriteAllBytes(finalPath, data);
 
                         downloaded = true;
                     }
