@@ -15,7 +15,7 @@ public class PatchListParserTests
 patch_0003.thor
 004|patch_0004.thor|sha256:3e7f|target:data.grf";
 
-        var plan = PatchListParser.Parse(plist, "https://patch.ragna.ph/patches/");
+        var plan = PatchListParser.Parse(plist, "http://ragna.ph/patcher/data/");
 
         Assert.Equal(4, plan.HighestRemoteId);
         Assert.Equal(4, plan.Jobs.Count);
