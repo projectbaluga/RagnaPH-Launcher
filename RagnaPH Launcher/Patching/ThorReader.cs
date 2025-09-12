@@ -170,27 +170,27 @@ public sealed class ThorReader : IThorReader
 
     private static byte[] DecompressZlib(byte[] data)
     {
-        if (TryDecompress(data, skipHeader: false, out var result) ||
-            TryDecompress(data, skipHeader: true, out result))
+        if (TryDecompress(data, hasHeader: true, out var result) ||
+            TryDecompress(data, hasHeader: false, out result))
         {
             return result;
         }
         throw new InvalidDataException("Invalid zlib data");
     }
 
-    private static bool TryDecompress(byte[] data, bool skipHeader, out byte[] result)
+    private static bool TryDecompress(byte[] data, bool hasHeader, out byte[] result)
     {
         try
         {
-            using var ms = new MemoryStream(data);
-            if (skipHeader)
+            int offset = hasHeader ? 2 : 0;
+            int count = data.Length - offset - (hasHeader ? 4 : 0);
+            if (count <= 0)
             {
-                if (ms.ReadByte() == -1 || ms.ReadByte() == -1)
-                {
-                    result = Array.Empty<byte>();
-                    return true;
-                }
+                result = Array.Empty<byte>();
+                return false;
             }
+
+            using var ms = new MemoryStream(data, offset, count);
             using var ds = new DeflateStream(ms, CompressionMode.Decompress);
             using var outMs = new MemoryStream();
             ds.CopyTo(outMs);
