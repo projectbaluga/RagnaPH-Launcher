@@ -40,8 +40,13 @@ namespace RagnaPH.Patching
                 }
 
                 Directory.CreateDirectory(cacheDir);
-                var tmp = Path.Combine(cacheDir, Path.GetRandomFileName() + ".thor.tmp");
-                var fin = Path.ChangeExtension(tmp, ".thor");
+                // Path.GetRandomFileName() may return a name with an extension (e.g., "abc123.tmp"),
+                // so appending another extension then using Path.ChangeExtension could result
+                // in doubled extensions like ".thor.thor". To avoid this, generate a base name
+                // and construct the temporary and final paths explicitly.
+                var baseName = Path.Combine(cacheDir, Path.GetRandomFileName());
+                var tmp = baseName + ".thor.tmp";
+                var fin = baseName + ".thor";
 
                 using (var src = await resp.Content.ReadAsStreamAsync())
                 using (var dst = File.Create(tmp, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan))
