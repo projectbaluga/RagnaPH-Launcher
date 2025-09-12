@@ -66,6 +66,6 @@ internal static class PatchNameUtils
             segments[i] = decoded;
         }
 
-        return string.Join('/', segments);
+        return string.Join("/", segments);
     }
 }

@@ -78,7 +78,7 @@ internal static class PatchDownloadUtils
             response.EnsureSuccessStatusCode();
             contentLength = response.Content.Headers.ContentLength;
 
-            using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var stream = await response.Content.ReadAsStreamAsync();
             using var fs = new FileStream(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None);
             await stream.CopyToAsync(fs, 81920, ct);
         }
