@@ -11,7 +11,7 @@ public record PatchServer(string Name, string PlistUrl, string PatchUrl);
 
 public record RetryConfig(int MaxAttempts, int[] BackoffSeconds);
 
-public record PatchingConfig(string DefaultTargetGrf, bool InPlace, bool CheckIntegrity, bool CreateGrf, int EnforceFreeSpaceMB);
+public record PatchingConfig(string DefaultTargetGrf, bool InPlace, bool CheckIntegrity, bool CreateGrf, bool SkipBackup, int EnforceFreeSpaceMB);
 
 public record PathConfig(string GameRoot, string DownloadTemp, string AppliedIndex);
 
