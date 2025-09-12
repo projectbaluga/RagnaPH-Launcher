@@ -23,7 +23,7 @@ public static class PatchListParser
             if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("#"))
                 continue;
 
-            var parts = trimmed.Split('|');
+            var parts = trimmed.Split(new[] { '|', ',' }, StringSplitOptions.RemoveEmptyEntries);
             for (int i = 0; i < parts.Length; i++)
                 parts[i] = parts[i].Trim();
             int id;
