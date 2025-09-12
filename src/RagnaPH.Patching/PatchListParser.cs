@@ -23,7 +23,7 @@ public static class PatchListParser
             if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("#"))
                 continue;
 
-            var parts = trimmed.Split('|');
+            var parts = trimmed.Split('|', StringSplitOptions.TrimEntries);
             int id;
             string fileName;
             int index = 0;
@@ -36,11 +36,34 @@ public static class PatchListParser
             }
             else
             {
-                fileName = parts[0];
-                var m = IdFromFileName.Match(fileName);
-                if (!m.Success)
-                    throw new FormatException($"Cannot determine patch id from '{line}'.");
-                id = int.Parse(m.Value, CultureInfo.InvariantCulture);
+                var candidate = parts[0];
+
+                if (parts.Length == 1)
+                {
+                    var m = Regex.Match(candidate, @"^(\d+)\s+(.+)$");
+                    if (m.Success)
+                    {
+                        id = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
+                        fileName = m.Groups[2].Value;
+                    }
+                    else
+                    {
+                        fileName = candidate;
+                        var idMatch = IdFromFileName.Match(fileName);
+                        if (!idMatch.Success)
+                            throw new FormatException($"Cannot determine patch id from '{line}'.");
+                        id = int.Parse(idMatch.Value, CultureInfo.InvariantCulture);
+                    }
+                }
+                else
+                {
+                    fileName = candidate;
+                    var idMatch = IdFromFileName.Match(fileName);
+                    if (!idMatch.Success)
+                        throw new FormatException($"Cannot determine patch id from '{line}'.");
+                    id = int.Parse(idMatch.Value, CultureInfo.InvariantCulture);
+                }
+
                 index = 1;
             }
 
