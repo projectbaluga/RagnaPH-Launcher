@@ -21,45 +21,59 @@ public sealed class ThorReader : IThorReader
     public Task<ThorManifest> ReadManifestAsync(string thorPath, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        using var archive = ZipFile.OpenRead(thorPath);
-        var entry = archive.GetEntry("manifest.json");
-        if (entry == null)
-            return Task.FromResult(new ThorManifest(null, false));
-        using var stream = entry.Open();
-        using var reader = new StreamReader(stream);
-        var json = reader.ReadToEnd();
-        var manifest = JsonConvert.DeserializeObject<ManifestModel>(json);
-        return Task.FromResult(new ThorManifest(manifest?.TargetGrf, manifest?.IncludesChecksums ?? false));
+        try
+        {
+            using var archive = ZipFile.OpenRead(thorPath);
+            var entry = archive.GetEntry("manifest.json");
+            if (entry == null)
+                return Task.FromResult(new ThorManifest(null, false));
+            using var stream = entry.Open();
+            using var reader = new StreamReader(stream);
+            var json = reader.ReadToEnd();
+            var manifest = JsonConvert.DeserializeObject<ManifestModel>(json);
+            return Task.FromResult(new ThorManifest(manifest?.TargetGrf, manifest?.IncludesChecksums ?? false));
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new InvalidDataException($"Invalid or corrupt THOR archive '{Path.GetFileName(thorPath)}'.", ex);
+        }
     }
 
     public Task<IEnumerable<ThorEntry>> ReadEntriesAsync(string thorPath, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var list = new List<ThorEntry>();
-        using var archive = ZipFile.OpenRead(thorPath);
-        foreach (var entry in archive.Entries)
+        try
         {
-            if (entry.FullName.Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
-                continue;
+            var list = new List<ThorEntry>();
+            using var archive = ZipFile.OpenRead(thorPath);
+            foreach (var entry in archive.Entries)
+            {
+                if (entry.FullName.Equals("manifest.json", StringComparison.OrdinalIgnoreCase))
+                    continue;
 
-            if (entry.FullName.EndsWith(".delete", StringComparison.OrdinalIgnoreCase))
-            {
-                var target = entry.FullName.Substring(0, entry.FullName.Length - 7);
-                list.Add(new ThorEntry(target, ThorEntryKind.Delete, 0, 0, null, () => Task.FromResult<Stream>(Stream.Null)));
-            }
-            else
-            {
-                list.Add(new ThorEntry(entry.FullName, ThorEntryKind.File, entry.Length, entry.CompressedLength, null, async () =>
+                if (entry.FullName.EndsWith(".delete", StringComparison.OrdinalIgnoreCase))
                 {
-                    var ms = new MemoryStream();
-                    using var source = entry.Open();
-                    await source.CopyToAsync(ms, 81920, ct);
-                    ms.Position = 0;
-                    return ms;
-                }));
+                    var target = entry.FullName.Substring(0, entry.FullName.Length - 7);
+                    list.Add(new ThorEntry(target, ThorEntryKind.Delete, 0, 0, null, () => Task.FromResult<Stream>(Stream.Null)));
+                }
+                else
+                {
+                    list.Add(new ThorEntry(entry.FullName, ThorEntryKind.File, entry.Length, entry.CompressedLength, null, async () =>
+                    {
+                        var ms = new MemoryStream();
+                        using var source = entry.Open();
+                        await source.CopyToAsync(ms, 81920, ct);
+                        ms.Position = 0;
+                        return ms;
+                    }));
+                }
             }
+            return Task.FromResult<IEnumerable<ThorEntry>>(list);
         }
-        return Task.FromResult<IEnumerable<ThorEntry>>(list);
+        catch (InvalidDataException ex)
+        {
+            throw new InvalidDataException($"Invalid or corrupt THOR archive '{Path.GetFileName(thorPath)}'.", ex);
+        }
     }
 
     public void Dispose()
