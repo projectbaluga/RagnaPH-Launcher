@@ -5,6 +5,14 @@ VisualStudioVersion = 17.11.35327.3
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RagnaPH Launcher", "RagnaPH Launcher\RagnaPH Launcher.csproj", "{E8CD799F-A814-4B91-8163-59385F706EBA}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{D5517575-3186-4ECA-BC71-EF082B4134CB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RagnaPH.Patching", "src\RagnaPH.Patching\RagnaPH.Patching.csproj", "{8FD3B9EA-165D-44E9-924F-CBC30054ED57}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{E93C82F2-526F-4625-BC6E-FE3C36BB5AC7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RagnaPH.Patching.Tests", "tests\RagnaPH.Patching.Tests\RagnaPH.Patching.Tests.csproj", "{27A96EF1-7405-4E19-B19E-A93AE29717E7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,11 +23,23 @@ Global
 		{E8CD799F-A814-4B91-8163-59385F706EBA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E8CD799F-A814-4B91-8163-59385F706EBA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E8CD799F-A814-4B91-8163-59385F706EBA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8FD3B9EA-165D-44E9-924F-CBC30054ED57}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8FD3B9EA-165D-44E9-924F-CBC30054ED57}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8FD3B9EA-165D-44E9-924F-CBC30054ED57}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8FD3B9EA-165D-44E9-924F-CBC30054ED57}.Release|Any CPU.Build.0 = Release|Any CPU
+		{27A96EF1-7405-4E19-B19E-A93AE29717E7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{27A96EF1-7405-4E19-B19E-A93AE29717E7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{27A96EF1-7405-4E19-B19E-A93AE29717E7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{27A96EF1-7405-4E19-B19E-A93AE29717E7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {3A257551-0AC6-44D8-8BD4-608E719D22A8}
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{8FD3B9EA-165D-44E9-924F-CBC30054ED57} = {D5517575-3186-4ECA-BC71-EF082B4134CB}
+		{27A96EF1-7405-4E19-B19E-A93AE29717E7} = {E93C82F2-526F-4625-BC6E-FE3C36BB5AC7}
 	EndGlobalSection
 EndGlobal
