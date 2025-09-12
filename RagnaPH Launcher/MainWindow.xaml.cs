@@ -116,13 +116,31 @@ namespace RagnaPHPatcher
             string[] patchFiles;
             try
             {
-                string patchListUrl = CombineUrl(fileUrl, patchListFile);
-                string patchListContent = await Http.GetStringAsync(patchListUrl);
+                string? patchListContent = null;
+                string patchListUrl = string.Empty;
+                foreach (var candidate in new[] { patchListFile, "plist.txt", "patchlist.txt" })
+                {
+                    patchListUrl = CombineUrl(fileUrl, candidate);
+                    try
+                    {
+                        patchListContent = await Http.GetStringAsync(patchListUrl);
+                        break;
+                    }
+                    catch
+                    {
+                        // try next candidate
+                    }
+                }
+
+                if (patchListContent is null)
+                    throw new HttpRequestException("Patch list not found.");
+
                 patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Failed to download patch list from " + CombineUrl(fileUrl, patchListFile) + ":\n" + ex.Message,
+                MessageBox.Show(
+                    "Failed to download patch list from " + CombineUrl(fileUrl, patchListFile) + ":\n" + ex.Message,
                     "Patch Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
