@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace RagnaPH.Patching;
 
@@ -111,6 +113,9 @@ internal static class ThorPatcher
     /// </summary>
     public static void ApplyPatch(string thorPath, string grfPath)
         => ApplyThorTransactional(thorPath, grfPath);
+
+    public static Task ApplyPatchAsync(string thorPath, string grfPath, CancellationToken cancellationToken = default)
+        => Task.Run(() => ApplyPatch(thorPath, grfPath), cancellationToken);
 
     public static void ApplyThorTransactional(string thorPath, string grfPath)
     {
