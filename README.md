@@ -135,7 +135,7 @@ The patching engine also reads a local JSON file to determine patch servers and 
 {
   "web": {
     "patchServers": [
-      { "name": "primary", "plistUrl": "https://patch.ragna.ph/plist.txt", "patchUrl": "https://patch.ragna.ph/patches/" }
+      { "name": "primary", "plistUrl": "http://ragna.ph/patcher/data/plist.txt", "patchUrl": "http://ragna.ph/patcher/data/" }
     ],
     "timeoutSeconds": 30,
     "maxParallelDownloads": 3,

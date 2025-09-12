@@ -3,8 +3,8 @@
     "patchServers": [
       {
         "name": "primary",
-        "plistUrl": "https://patch.ragna.ph/plist.txt",
-        "patchUrl": "https://patch.ragna.ph/patches/"
+        "plistUrl": "http://ragna.ph/patcher/data/plist.txt",
+        "patchUrl": "http://ragna.ph/patcher/data/"
       }
     ],
     "timeoutSeconds": 30,
