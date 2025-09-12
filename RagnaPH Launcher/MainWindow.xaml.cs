@@ -167,7 +167,7 @@ namespace RagnaPHPatcher
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
-                            ThorPatcher.ApplyPatch(thorPath, grfPath);
+                            await ThorPatcher.ApplyPatchAsync(thorPath, grfPath);
                         }
                         catch (Exception ex)
                         {
@@ -298,7 +298,7 @@ namespace RagnaPHPatcher
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
-                            ThorPatcher.ApplyPatch(thorPath, grfPath);
+                            await ThorPatcher.ApplyPatchAsync(thorPath, grfPath);
                         }
                         catch (Exception ex)
                         {
