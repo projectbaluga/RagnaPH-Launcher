@@ -31,5 +31,17 @@ public class PatchListParserTests
         Assert.Equal("another.thor", item.FileName);
         Assert.Equal("another.thor", item.RelativePath);
     }
+
+    [Fact]
+    public void Parse_StripsIdWhenNoWhitespace()
+    {
+        var text = "003patch1.0  item description fix.thor";
+        var items = PatchListParser.Parse(text, baseUrlEndsWithData: false).ToList();
+
+        var item = Assert.Single(items);
+        Assert.Equal(3, item.Id);
+        Assert.Equal("patch1.0  item description fix.thor", item.FileName);
+        Assert.Equal("data/patch1.0  item description fix.thor", item.RelativePath);
+    }
 }
 
