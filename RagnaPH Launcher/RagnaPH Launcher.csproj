@@ -61,6 +61,8 @@
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Net.Http" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="System.Xaml">
       <RequiredTargetFramework>4.0</RequiredTargetFramework>
     </Reference>
@@ -98,6 +100,8 @@
     <Compile Include="Patching\PatchListParser.cs" />
     <Compile Include="Patching\PatchStateStore.cs" />
     <Compile Include="Patching\JsonConvertShim.cs" />
+    <Compile Include="Patching\MockGrfEditor.cs" />
+    <Compile Include="Patching\ThorReader.cs" />
     <Compile Include="IsExternalInit.cs" />
   </ItemGroup>
   <ItemGroup>
