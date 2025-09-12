@@ -156,7 +156,7 @@ namespace RagnaPHPatcher
 
             for (int i = 0; i < total; i++)
             {
-                string relativePath = files[i].Trim();
+                string relativePath = files[i].Split(new[] { '|', ',' }, 2)[0].Trim();
                 if (string.IsNullOrWhiteSpace(relativePath)) continue;
 
                 string url = CombineUrl(baseUrl, relativePath.Replace("\\", "/"));
@@ -286,7 +286,7 @@ namespace RagnaPHPatcher
 
             for (int i = 0; i < total; i++)
             {
-                string relativePath = files[i].Trim();
+                string relativePath = files[i].Split(new[] { '|', ',' }, 2)[0].Trim();
                 if (string.IsNullOrWhiteSpace(relativePath)) continue;
 
                 string url = CombineUrl(baseUrl, relativePath.Replace("\\", "/"));
