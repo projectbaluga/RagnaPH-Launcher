@@ -103,6 +103,9 @@
     <Compile Include="Patching\JsonConvertShim.cs" />
     <Compile Include="Patching\MockGrfEditor.cs" />
     <Compile Include="Patching\ThorReader.cs" />
+    <Compile Include="Patching\PatchDownloadHelper.cs" />
+    <Compile Include="Patching\Logger.cs" />
+    <Compile Include="Patching\ThorUtils.cs" />
     <Compile Include="IsExternalInit.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -24,18 +24,13 @@ public sealed class HttpPatchDownloader : IPatchDownloader
 
     public async Task<string> DownloadAsync(PatchJob job, CancellationToken ct)
     {
-        var (fileName, encodedName) = PatchNameUtils.Normalize(job.FileName);
-
+        var safeName = Path.GetFileName(job.FileName);
+        var (fileName, _) = PatchNameUtils.Normalize(safeName);
         var tempDir = _config.Paths.DownloadTemp;
         Directory.CreateDirectory(tempDir);
-        var destPath = Path.Combine(tempDir, fileName);
 
         var candidates = _config.Web.PatchServers
-            .Select(s =>
-            {
-                var baseUri = s.PatchUrl.EndsWith("/") ? s.PatchUrl : s.PatchUrl + "/";
-                return new Uri(new Uri(baseUri), encodedName);
-            })
+            .Select(s => PatchDownloadHelper.BuildPatchUri(new Uri(s.PatchUrl), job.FileName))
             .Prepend(job.DownloadUrl)
             .Select(u => u.ToString())
             .Distinct()
@@ -48,24 +43,20 @@ public sealed class HttpPatchDownloader : IPatchDownloader
             {
                 try
                 {
-                    using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
-                    response.EnsureSuccessStatusCode();
-
-                    using (var fs = File.Create(destPath))
-                    {
-                        await response.Content.CopyToAsync(fs);
-                    }
+                    var path = await PatchDownloadHelper.DownloadToTempAsync(_httpClient, url, tempDir, ct);
+                    if (path == null)
+                        continue;
 
                     if (job.SizeBytes.HasValue)
                     {
-                        var size = new FileInfo(destPath).Length;
+                        var size = new FileInfo(path).Length;
                         if (size != job.SizeBytes.Value)
                             throw new InvalidDataException($"Size mismatch for {job.FileName}.");
                     }
 
                     if (!string.IsNullOrEmpty(job.Sha256))
                     {
-                        using var stream = File.OpenRead(destPath);
+                        using var stream = File.OpenRead(path);
                         using var sha = SHA256.Create();
                         var hash = sha.ComputeHash(stream);
                         var hex = BitConverter.ToString(hash).Replace("-", string.Empty).ToLowerInvariant();
@@ -73,12 +64,10 @@ public sealed class HttpPatchDownloader : IPatchDownloader
                             throw new InvalidDataException($"Checksum mismatch for {job.FileName}.");
                     }
 
-                    return destPath;
+                    return path;
                 }
                 catch (Exception) when (!(ct.IsCancellationRequested))
                 {
-                    if (File.Exists(destPath))
-                        File.Delete(destPath);
                     // try next mirror
                 }
             }
