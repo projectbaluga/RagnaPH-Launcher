@@ -1,4 +1,5 @@
-using RagnaPH.Patching;
+using System.Linq;
+using RagnaPH.Launcher.Services;
 using Xunit;
 
 namespace RagnaPH.Launcher.Tests;
@@ -6,12 +7,29 @@ namespace RagnaPH.Launcher.Tests;
 public class PatchListParserTests
 {
     [Fact]
-    public void Parse_NormalizesFilenames()
+    public void Parse_StripsNumericPrefixAndBuildsRelativePath()
     {
-        var plan = PatchListParser.Parse("1 patch%201.thor", "http://example.com/patch/");
-        Assert.Single(plan.Jobs);
-        var job = plan.Jobs[0];
-        Assert.Equal("patch 1.thor", job.FileName);
-        Assert.Equal("http://example.com/patch/patch%201.thor", job.DownloadUrl.ToString());
+        var text = "001 patch1.0 - item description fix.thor";
+        var items = PatchListParser.Parse(text, baseUrlEndsWithData: false).ToList();
+
+        Assert.Single(items);
+        var item = items[0];
+        Assert.Equal(1, item.Id);
+        Assert.Equal("patch1.0 - item description fix.thor", item.FileName);
+        Assert.Equal("data/patch1.0 - item description fix.thor", item.RelativePath);
+    }
+
+    [Fact]
+    public void Parse_RespectsExistingDataSegment()
+    {
+        var text = "002 another.thor";
+        var items = PatchListParser.Parse(text, baseUrlEndsWithData: true).ToList();
+
+        Assert.Single(items);
+        var item = items[0];
+        Assert.Equal(2, item.Id);
+        Assert.Equal("another.thor", item.FileName);
+        Assert.Equal("another.thor", item.RelativePath);
     }
 }
+
