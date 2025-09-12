@@ -10,16 +10,12 @@ namespace RagnaPH.Launcher.Net
             if (baseUri == null) throw new ArgumentNullException(nameof(baseUri));
             if (string.IsNullOrWhiteSpace(relativePath)) throw new ArgumentException("Empty relative path", nameof(relativePath));
 
-            // Normalize and encode each segment (never encode the whole string at once)
-            var encoded = string.Join("/",
-                relativePath.Trim()
-                            .Replace('\\', '/')
-                            .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries)
-                            .Select(Uri.EscapeDataString));
-
-            // Ensure base ends with '/'
-            var normalizedBase = baseUri.ToString().EndsWith("/") ? baseUri : new Uri(baseUri + "/");
-            return new Uri(normalizedBase, encoded);
+            var parts = relativePath.Trim().Replace('\\', '/')
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.EscapeDataString);
+            var encoded = string.Join("/", parts);
+            if (!baseUri.ToString().EndsWith("/")) baseUri = new Uri(baseUri + "/");
+            return new Uri(baseUri, encoded);
         }
     }
 }

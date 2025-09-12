@@ -90,6 +90,9 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Net\PatchUrlBuilder.cs" />
+    <Compile Include="Models\PatchItem.cs" />
+    <Compile Include="Services\PatchListParser.cs" />
+    <Compile Include="Services\PatchingFlow.cs" />
     <Compile Include="Patching\GrfMerger.cs" />
     <Compile Include="Patching\HttpPatchDownloader.cs" />
     <Compile Include="Patching\HttpPatchSource.cs" />
