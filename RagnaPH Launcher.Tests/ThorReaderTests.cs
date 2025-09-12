@@ -51,10 +51,30 @@ public class ThorReaderTests
         }
     }
 
-    private static void CreateSimpleThor(string path, string fileName, string content, string targetGrf)
+    [Fact]
+    public async Task ReadEntries_UncompressedFile_ReturnsFile()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            CreateSimpleThor(path, "hello.txt", "hello", "data.grf", compress: false);
+            var reader = new ThorReader();
+            var entries = await reader.ReadEntriesAsync(path, CancellationToken.None);
+            var entry = Assert.Single(entries);
+            using var stream = await entry.OpenStreamAsync();
+            using var sr = new StreamReader(stream);
+            Assert.Equal("hello", await sr.ReadToEndAsync());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private static void CreateSimpleThor(string path, string fileName, string content, string targetGrf, bool compress = true)
     {
         var fileData = Encoding.UTF8.GetBytes(content);
-        var compressedFile = CompressZlib(fileData);
+        var compressedFile = compress ? CompressZlib(fileData) : fileData;
 
         using var fs = File.Create(path);
         using var bw = new BinaryWriter(fs, Encoding.ASCII, leaveOpen: true);

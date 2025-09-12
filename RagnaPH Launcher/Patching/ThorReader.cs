@@ -152,6 +152,14 @@ public sealed class ThorReader : IThorReader
             if (read != sizeCompressed)
                 throw new InvalidDataException("Unexpected end of THOR file");
         }
+        if (sizeCompressed == sizeDecompressed)
+        {
+            // Some THOR entries may store data without compression. If the
+            // compressed and decompressed sizes are equal we can return the
+            // raw buffer directly instead of attempting to decompress it.
+            return new MemoryStream(buffer, writable: false);
+        }
+
         var data = DecompressZlib(buffer);
         if (data.Length != sizeDecompressed)
             throw new InvalidDataException("Decompression size mismatch");
