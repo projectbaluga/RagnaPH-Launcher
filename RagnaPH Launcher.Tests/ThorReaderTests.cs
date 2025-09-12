@@ -71,6 +71,44 @@ public class ThorReaderTests
         }
     }
 
+    [Fact]
+    public async Task ReadEntries_RawDeflateFile_ReturnsFile()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            CreateSimpleThorRaw(path, "hello.txt", "hello", "data.grf");
+            var reader = new ThorReader();
+            var entries = await reader.ReadEntriesAsync(path, CancellationToken.None);
+            var entry = Assert.Single(entries);
+            using var stream = await entry.OpenStreamAsync();
+            using var sr = new StreamReader(stream);
+            Assert.Equal("hello", await sr.ReadToEndAsync());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ReadEntries_NormalizesPathSeparators()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            CreateSimpleThor(path, "\\data\\folder//file.txt", "hello", "data.grf");
+            var reader = new ThorReader();
+            var entries = await reader.ReadEntriesAsync(path, CancellationToken.None);
+            var entry = Assert.Single(entries);
+            Assert.Equal("data/folder/file.txt", entry.VirtualPath);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static void CreateSimpleThor(string path, string fileName, string content, string targetGrf, bool compress = true)
     {
         var fileData = Encoding.UTF8.GetBytes(content);
@@ -137,5 +175,55 @@ public class ThorReaderTests
             b = (b + a) % ModAdler;
         }
         return (b << 16) | a;
+    }
+
+    private static void CreateSimpleThorRaw(string path, string fileName, string content, string targetGrf)
+    {
+        var fileData = Encoding.UTF8.GetBytes(content);
+        var compressedFile = CompressRawDeflate(fileData);
+
+        using var fs = File.Create(path);
+        using var bw = new BinaryWriter(fs, Encoding.ASCII, leaveOpen: true);
+        bw.Write(Encoding.ASCII.GetBytes("ASSF (C) 2007 Aeomin DEV"));
+        bw.Write((byte)1); // useGrfMerging
+        bw.Write(1); // file count
+        bw.Write((short)0x30); // mode
+        bw.Write((byte)targetGrf.Length);
+        bw.Write(Encoding.ASCII.GetBytes(targetGrf));
+        long lenPos = fs.Position;
+        bw.Write(0); // table length placeholder
+        long offPos = fs.Position;
+        bw.Write(0); // table offset placeholder
+        long dataOffset = fs.Position;
+        bw.Write(compressedFile); // file data
+        long tableOffset = fs.Position;
+        using var tableMs = new MemoryStream();
+        using (var tableBw = new BinaryWriter(tableMs, Encoding.ASCII, leaveOpen: true))
+        {
+            tableBw.Write((byte)fileName.Length);
+            tableBw.Write(Encoding.ASCII.GetBytes(fileName));
+            tableBw.Write((byte)0); // flags
+            tableBw.Write((uint)0); // offset
+            tableBw.Write(compressedFile.Length);
+            tableBw.Write(fileData.Length);
+        }
+        var tableCompressed = CompressZlib(tableMs.ToArray());
+        bw.Write(tableCompressed);
+        bw.Flush();
+        long tableLen = tableCompressed.Length;
+        fs.Position = lenPos;
+        bw.Write((int)tableLen);
+        fs.Position = offPos;
+        bw.Write((int)tableOffset);
+    }
+
+    private static byte[] CompressRawDeflate(byte[] data)
+    {
+        using var ms = new MemoryStream();
+        using (var ds = new DeflateStream(ms, CompressionLevel.Optimal, true))
+        {
+            ds.Write(data, 0, data.Length);
+        }
+        return ms.ToArray();
     }
 }
