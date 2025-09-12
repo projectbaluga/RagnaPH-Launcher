@@ -1,144 +1,66 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.IO.Compression;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace RagnaPH.Patching;
 
 /// <summary>
-/// Utility routines for working with THOR archives and applying them to GRF
-/// files. Only a very small subset of the real formats is implemented to
-/// satisfy the launcher's patching requirements.
+/// Applies a simplified THOR archive directly to a GRF file by extracting
+/// each entry and merging it into the target archive. This avoids creating
+/// large transactional copies of the GRF and mirrors the behaviour of
+/// official patchers which operate in place.
 /// </summary>
 internal static class ThorPatcher
 {
     /// <summary>
-    /// Represents a single entry inside a THOR archive.
-    /// </summary>
-    internal sealed class ThorIndexEntry
-    {
-        public string VirtualPath = string.Empty;
-        public long DataOffset;
-        public int CompressedSize;
-        public int UncompressedSize;
-        public bool DeleteFlag;
-    }
-
-    /// <summary>
-    /// Holds the parsed index of a THOR archive.
-    /// </summary>
-    internal sealed class ThorIndex
-    {
-        public List<ThorIndexEntry> Entries = new();
-        public long DataStartOffset;
-    }
-
-    /// <summary>
-    /// Performs basic validation of a THOR archive and returns its index.
-    /// The parser understands the classic "ThOr" format used by most patch
-    /// servers. Only the features required by the launcher are implemented.
-    /// </summary>
-    public static bool IsValidThor(string path, out ThorIndex index)
-    {
-        index = new ThorIndex();
-        try
-        {
-            using var fs = File.OpenRead(path);
-            using var br = new BinaryReader(fs);
-
-            var magic = new string(br.ReadChars(4));
-            if (!string.Equals(magic, "ThOr", StringComparison.Ordinal))
-                return false;
-
-            int version = br.ReadInt32();
-            int tableOffset = br.ReadInt32();
-            int tableSize = br.ReadInt32();
-            int dataOffset = br.ReadInt32();
-
-            fs.Position = tableOffset;
-            var compTable = br.ReadBytes(tableSize);
-            using var ms = new MemoryStream(compTable);
-            using var ds = new DeflateStream(ms, CompressionMode.Decompress);
-            using var tableStream = new MemoryStream();
-            ds.CopyTo(tableStream);
-            tableStream.Position = 0;
-            using var tr = new BinaryReader(tableStream);
-            while (tableStream.Position < tableStream.Length)
-            {
-                var nameLen = tr.ReadByte();
-                var nameBytes = tr.ReadBytes(nameLen);
-                var name = System.Text.Encoding.UTF8.GetString(nameBytes);
-                var flags = tr.ReadByte();
-                if ((flags & 0x01) != 0)
-                {
-                    index.Entries.Add(new ThorIndexEntry
-                    {
-                        VirtualPath = name.Replace('\\', '/'),
-                        DeleteFlag = true
-                    });
-                    continue;
-                }
-
-                var offset = tr.ReadUInt32();
-                var csize = tr.ReadInt32();
-                var usize = tr.ReadInt32();
-                index.Entries.Add(new ThorIndexEntry
-                {
-                    VirtualPath = name.Replace('\\', '/'),
-                    DataOffset = offset,
-                    CompressedSize = csize,
-                    UncompressedSize = usize,
-                    DeleteFlag = false
-                });
-            }
-
-            index.DataStartOffset = dataOffset;
-            return true;
-        }
-        catch
-        {
-            index = new ThorIndex();
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Applies the THOR archive to the specified GRF file in a transactional
-    /// manner to avoid corrupting the original on errors. The actual GRF merge
-    /// implementation is highly simplified and only copies data streams; it does
-    /// not perform real GRF table updates. It is sufficient for basic tests but
-    /// should be replaced with a full implementation for production use.
+    /// Synchronously apply a THOR patch to the specified GRF file.
     /// </summary>
     public static void ApplyPatch(string thorPath, string grfPath)
-        => ApplyThorTransactional(thorPath, grfPath);
+        => ApplyPatchAsync(thorPath, grfPath).GetAwaiter().GetResult();
 
-    public static Task ApplyPatchAsync(string thorPath, string grfPath, CancellationToken cancellationToken = default)
-        => Task.Run(() => ApplyPatch(thorPath, grfPath), cancellationToken);
-
-    public static void ApplyThorTransactional(string thorPath, string grfPath)
+    /// <summary>
+    /// Asynchronously apply a THOR patch to the specified GRF file.
+    /// </summary>
+    public static async Task ApplyPatchAsync(string thorPath, string grfPath, CancellationToken cancellationToken = default)
     {
-        var txnPath = grfPath + ".__txn";
-        var bakPath = grfPath + ".bak";
+        cancellationToken.ThrowIfCancellationRequested();
 
-        File.Copy(grfPath, txnPath, true);
-        try
+        using var reader = new ThorReader();
+        var manifest = await reader.ReadManifestAsync(thorPath, cancellationToken);
+        var entries = await reader.ReadEntriesAsync(thorPath, cancellationToken);
+
+        // The official patcher honours the target GRF embedded in the THOR
+        // manifest. If none is provided we fall back to the supplied path.
+        var targetGrf = manifest.TargetGrf ?? grfPath;
+
+        // Merge using a GrfMerger which mimics the robust workflow used by
+        // Tokei's GRF Editor (https://github.com/Tokeiburu/GRFEditor):
+        // a backup is created, changes are applied, then the index is rebuilt
+        // before swapping the result back.
+        var config = new PatchingConfig(targetGrf, InPlace: true, CheckIntegrity: true, CreateGrf: true, EnforceFreeSpaceMB: 0);
+        var merger = new GrfMerger(() => new RealGrfEditor(), config);
+
+        await merger.MergeAsync(targetGrf, async grf =>
         {
-            if (File.Exists(bakPath))
-                File.Delete(bakPath);
-            File.Move(grfPath, bakPath);
-            File.Move(txnPath, grfPath);
-            File.Delete(bakPath);
-        }
-        catch
-        {
-            if (File.Exists(txnPath))
-                File.Delete(txnPath);
-            if (File.Exists(bakPath) && !File.Exists(grfPath))
-                File.Move(bakPath, grfPath);
-            throw;
-        }
+            foreach (var entry in entries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                switch (entry.Kind)
+                {
+                    case ThorEntryKind.File:
+                        using (var stream = await entry.OpenStreamAsync())
+                        {
+                            await grf.AddOrReplaceAsync(entry.VirtualPath, stream, cancellationToken);
+                        }
+                        break;
+                    case ThorEntryKind.Delete:
+                        await grf.DeleteAsync(entry.VirtualPath, cancellationToken);
+                        break;
+                    case ThorEntryKind.Directory:
+                        // Directories are implicit in GRF archives.
+                        break;
+                }
+            }
+        }, verifyIntegrity: true, ct: cancellationToken);
     }
 }
-
