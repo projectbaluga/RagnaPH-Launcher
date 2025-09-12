@@ -87,7 +87,8 @@ public static class PatchListParser
             var baseUrl = patchBaseUrl.EndsWith("/") ? patchBaseUrl : patchBaseUrl + "/";
             var decodedName = Uri.UnescapeDataString(fileName);
             var encodedName = Uri.EscapeDataString(decodedName);
-            var url = new Uri(new Uri(baseUrl), encodedName);
+            // Construct the URL using the already encoded file name to avoid double encoding
+            var url = new Uri(baseUrl + encodedName);
             jobs.Add(new PatchJob(id, fileName, url, target, size, sha));
         }
 
