@@ -4,7 +4,7 @@
 
 [![.NET Framework](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4?logo=.net)](https://dotnet.microsoft.com/)
 
-A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displays the latest news, keeps the game files up to date, and launches the client with a single click.
+A polished Windows launcher and patcher for **RagnaPH** built with WPF and a companion **.NET 8** patching library. It displays the latest news, keeps the game files up to date, and launches the client with a single click.
 
 ## 📚 Table of Contents
 
@@ -65,9 +65,16 @@ A polished Windows launcher and patcher for **RagnaPH** built with WPF. It displ
 
 ## 📁 Project Structure
 
+Top-level layout:
+
 - `RagnaPH Launcher/` – WPF front-end targeting .NET Framework 4.8.
-- `src/RagnaPH.Patching/` – .NET 8 library that handles downloading patches, parsing lists, and tracking state.
-- `tests/RagnaPH.Patching.Tests/` – xUnit tests for the patching engine.
+- `src/` – source libraries.
+  - `src/RagnaPH.Patching/` – .NET 8 library for downloading patches, parsing lists, and tracking state.
+- `tests/` – test projects.
+  - `tests/RagnaPH.Patching.Tests/` – xUnit tests for the patching engine.
+- `patcher.config.json` – sample launcher configuration consumed by the patching library.
+- `RagnaPH Launcher.sln` – Visual Studio solution file.
+- `RagnaPH-Launcher-Patching-Prompt.md` – design prompt describing the patching requirements.
 
 ### Patching Library Highlights
 
@@ -79,6 +86,7 @@ Key components inside `src/RagnaPH.Patching` include:
 - `HttpPatchDownloader` – downloads archives with retry, size and checksum validation.
 - `PatchStateStore` – tracks applied patch IDs in a JSON file.
 - `PatchEngine` – orchestrates downloading and applying patches while raising progress events for the UI.
+- `GrfMerger` – applies THOR contents to GRF files using a safe, atomic merge process.
 
 ### Patching Workflow
 
