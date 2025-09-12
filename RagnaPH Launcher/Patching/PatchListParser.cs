@@ -41,22 +41,12 @@ public static class PatchListParser
             {
                 var candidate = parts[0];
 
-                if (parts.Length == 1)
+                // Handle combined "id filename" segment even when additional metadata is present
+                var m = Regex.Match(candidate, @"^(\d+)\s+(.+)$");
+                if (m.Success)
                 {
-                    var m = Regex.Match(candidate, @"^(\d+)\s+(.+)$");
-                    if (m.Success)
-                    {
-                        id = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
-                        filePath = m.Groups[2].Value;
-                    }
-                    else
-                    {
-                        filePath = candidate;
-                        var idMatch = IdFromFileName.Match(filePath);
-                        if (!idMatch.Success)
-                            throw new FormatException($"Cannot determine patch id from '{line}'.");
-                        id = int.Parse(idMatch.Value, CultureInfo.InvariantCulture);
-                    }
+                    id = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
+                    filePath = m.Groups[2].Value;
                 }
                 else
                 {
