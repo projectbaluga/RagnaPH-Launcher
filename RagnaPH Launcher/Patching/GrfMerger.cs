@@ -25,7 +25,7 @@ public sealed class GrfMerger
     {
         if (_config.InPlace)
         {
-            await using var grf = _grfFactory();
+            using var grf = _grfFactory();
             await grf.OpenAsync(grfPath, _config.CreateGrf, ct);
             await apply(grf);
             await grf.RebuildIndexAsync(ct);
@@ -53,7 +53,7 @@ public sealed class GrfMerger
 
         try
         {
-            await using (var grf = _grfFactory())
+            using (var grf = _grfFactory())
             {
                 await grf.OpenAsync(tempPath, _config.CreateGrf, ct);
                 await apply(grf);

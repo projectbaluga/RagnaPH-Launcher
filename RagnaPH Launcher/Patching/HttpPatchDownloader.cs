@@ -41,7 +41,7 @@ public sealed class HttpPatchDownloader : IPatchDownloader
 
                 using (var fs = File.Create(destPath))
                 {
-                    await response.Content.CopyToAsync(fs, ct);
+                    await response.Content.CopyToAsync(fs);
                 }
 
                 if (job.SizeBytes.HasValue)
