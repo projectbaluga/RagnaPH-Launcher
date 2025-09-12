@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using RagnaPH.Launcher.Net;
 
 namespace RagnaPH.Patching;
 
@@ -19,7 +20,7 @@ public sealed class HttpPatchDownloader : IPatchDownloader
     {
         // The provided HttpClient is kept for backward compatibility but the
         // new implementation uses a dedicated client in
-        // <see cref="PatchDownloadUtils"/>. Having the parameter ensures DI
+        // <see cref="PatchDownloader"/>. Having the parameter ensures DI
         // setups continue to work without modifications.
         _config = config;
     }
@@ -27,26 +28,22 @@ public sealed class HttpPatchDownloader : IPatchDownloader
     public async Task<string> DownloadAsync(PatchJob job, CancellationToken ct)
     {
         var candidates = _config.Web.PatchServers
-            .Select(s =>
-            {
-                var baseUri = s.PatchUrl.EndsWith("/") ? s.PatchUrl : s.PatchUrl + "/";
-                return PatchDownloadUtils.BuildPatchUri(new Uri(baseUri), job.FileName);
-            })
+            .Select(s => PatchUrlBuilder.Build(new Uri(s.PatchUrl), job.FileName))
             .Prepend(job.DownloadUrl)
             .Select(u => u.ToString())
             .Distinct()
             .Select(u => new Uri(u))
             .ToArray();
 
+        Exception? lastError = null;
         for (int attempt = 0; attempt < _config.Web.Retry.MaxAttempts; attempt++)
         {
             foreach (var url in candidates)
             {
                 try
                 {
-                    var path = await PatchDownloadUtils.DownloadToTempAsync(url, ct);
-                    if (path == null)
-                        continue;
+                    var cacheDir = Path.Combine(Path.GetTempPath(), "PatchCache");
+                    var path = await PatchDownloader.DownloadThorAsync(url, cacheDir, ct);
 
                     if (job.SizeBytes.HasValue)
                     {
@@ -67,8 +64,9 @@ public sealed class HttpPatchDownloader : IPatchDownloader
 
                     return path;
                 }
-                catch (Exception) when (!(ct.IsCancellationRequested))
+                catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
+                    lastError = ex;
                     // try next mirror
                 }
             }
@@ -82,6 +80,9 @@ public sealed class HttpPatchDownloader : IPatchDownloader
                     await Task.Delay(TimeSpan.FromSeconds(delay), ct);
             }
         }
+
+        if (lastError != null)
+            throw lastError;
 
         throw new HttpRequestException($"Failed to download {job.FileName} from all servers after {_config.Web.Retry.MaxAttempts} attempts.");
     }
