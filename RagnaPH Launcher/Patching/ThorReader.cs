@@ -102,7 +102,8 @@ public sealed class ThorReader : IThorReader
         int sizeCompressed = reader.ReadInt32();
         int sizeDecompressed = reader.ReadInt32();
         byte nameLen = reader.ReadByte();
-        var name = Encoding.ASCII.GetString(reader.ReadBytes(nameLen));
+        var rawName = Encoding.ASCII.GetString(reader.ReadBytes(nameLen));
+        var name = NormalizeEntryPath(rawName);
         long dataPos = fs.Position;
         return new[]
         {
@@ -124,7 +125,8 @@ public sealed class ThorReader : IThorReader
         while (tableStream.Position < tableStream.Length)
         {
             byte nameLen = reader.ReadByte();
-            var name = Encoding.ASCII.GetString(reader.ReadBytes(nameLen));
+            var rawName = Encoding.ASCII.GetString(reader.ReadBytes(nameLen));
+            var name = NormalizeEntryPath(rawName);
             byte flags = reader.ReadByte();
             if ((flags & 0x01) == 0x01)
             {
@@ -168,13 +170,56 @@ public sealed class ThorReader : IThorReader
 
     private static byte[] DecompressZlib(byte[] data)
     {
-        using var ms = new MemoryStream(data);
-        if (ms.ReadByte() == -1 || ms.ReadByte() == -1)
-            return Array.Empty<byte>();
-        using var ds = new DeflateStream(ms, CompressionMode.Decompress);
-        using var outMs = new MemoryStream();
-        ds.CopyTo(outMs);
-        return outMs.ToArray();
+        if (TryDecompress(data, skipHeader: false, out var result) ||
+            TryDecompress(data, skipHeader: true, out result))
+        {
+            return result;
+        }
+        throw new InvalidDataException("Invalid zlib data");
+    }
+
+    private static bool TryDecompress(byte[] data, bool skipHeader, out byte[] result)
+    {
+        try
+        {
+            using var ms = new MemoryStream(data);
+            if (skipHeader)
+            {
+                if (ms.ReadByte() == -1 || ms.ReadByte() == -1)
+                {
+                    result = Array.Empty<byte>();
+                    return true;
+                }
+            }
+            using var ds = new DeflateStream(ms, CompressionMode.Decompress);
+            using var outMs = new MemoryStream();
+            ds.CopyTo(outMs);
+            result = outMs.ToArray();
+            return true;
+        }
+        catch (InvalidDataException)
+        {
+            result = Array.Empty<byte>();
+            return false;
+        }
+    }
+
+    private static string NormalizeEntryPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new InvalidDataException("THOR entry name is empty");
+
+        var segments = path.Replace('\\', '/').Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+            throw new InvalidDataException("THOR entry name is empty");
+
+        foreach (var seg in segments)
+        {
+            if (seg == "." || seg == "..")
+                throw new InvalidDataException("Invalid THOR entry path");
+        }
+
+        return string.Join("/", segments);
     }
 
     private sealed record Header(short Mode, string TargetGrf, int FileTableCompressedLength,
