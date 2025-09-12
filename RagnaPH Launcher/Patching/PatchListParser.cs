@@ -84,7 +84,10 @@ public static class PatchListParser
                     target = seg.Substring(7);
             }
 
-            var url = new Uri(new Uri(patchBaseUrl), fileName);
+            var baseUrl = patchBaseUrl.EndsWith("/") ? patchBaseUrl : patchBaseUrl + "/";
+            var decodedName = Uri.UnescapeDataString(fileName);
+            var encodedName = Uri.EscapeDataString(decodedName);
+            var url = new Uri(new Uri(baseUrl), encodedName);
             jobs.Add(new PatchJob(id, fileName, url, target, size, sha));
         }
 
