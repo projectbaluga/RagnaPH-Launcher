@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using ICSharpCode.SharpZipLib.Zip.Compression;
+using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
+using ICSharpCode.SharpZipLib;
 
 namespace RagnaPH.Patching;
 
@@ -146,6 +148,11 @@ public sealed class ThorReader : IThorReader
 
     private static async Task<Stream> ReadFileAsync(string thorPath, long offset, int sizeCompressed, int sizeDecompressed)
     {
+        if (sizeCompressed == 0)
+        {
+            return new MemoryStream(Array.Empty<byte>(), writable: false);
+        }
+
         var buffer = new byte[sizeCompressed];
         using (var fs = File.OpenRead(thorPath))
         {
@@ -182,22 +189,14 @@ public sealed class ThorReader : IThorReader
     {
         try
         {
-            int offset = hasHeader ? 2 : 0;
-            int count = data.Length - offset - (hasHeader ? 4 : 0);
-            if (count <= 0)
-            {
-                result = Array.Empty<byte>();
-                return false;
-            }
-
-            using var ms = new MemoryStream(data, offset, count);
-            using var ds = new DeflateStream(ms, CompressionMode.Decompress);
+            using var ms = new MemoryStream(data);
+            using var inflater = new InflaterInputStream(ms, new Inflater(!hasHeader));
             using var outMs = new MemoryStream();
-            ds.CopyTo(outMs);
+            inflater.CopyTo(outMs);
             result = outMs.ToArray();
             return true;
         }
-        catch (InvalidDataException)
+        catch (SharpZipBaseException)
         {
             result = Array.Empty<byte>();
             return false;
