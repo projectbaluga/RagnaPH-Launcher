@@ -40,8 +40,8 @@ Create `patcher.config.json` at app root. Example:
     "patchServers": [
       {
         "name": "primary",
-        "plistUrl": "http://ragna.ph/patcher/data/plist.txt",
-        "patchUrl": "http://ragna.ph/patcher/data/"
+        "plistUrl": "http://ragna.ph/patcher/plist.txt",
+        "patchUrl": "http://ragna.ph/patcher/"
       },
       {
         "name": "mirror-1",
@@ -268,7 +268,7 @@ Add to launcher exe (or separate `RagnaPH.Patcher.Cli`):
 RagnaPH.Launcher.exe --check
 RagnaPH.Launcher.exe --apply
 RagnaPH.Launcher.exe --apply-patch "C:\Downloads\fix_0123.thor" --remove
-RagnaPH.Launcher.exe --apply-patch "http://ragna.ph/patcher/data/fix_0123.thor" --remove
+RagnaPH.Launcher.exe --apply-patch "http://ragna.ph/patcher/fix_0123.thor" --remove
 RagnaPH.Launcher.exe --config ".\patcher.config.json" --mirror mirror-1
 RagnaPH.Launcher.exe --in-place
 ```
