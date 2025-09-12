@@ -122,10 +122,10 @@ The launcher downloads its behavior settings from a remote `config.ini`. Key val
 | `[Main]` | `allow` | Enable or disable patching |
 | `[Main]` | `Force_Start` | Allow launching even if patching is disallowed |
 | `[Main]` | `policy_msg` | Message shown when patching is disabled |
-| `[Main]` | `file_url` | Base URL for patch files |
+| `[Main]` | `file_url` | Base URL for patch files (trailing slash optional) |
 | `[Patch]` | `PatchList` | Name of the patch list file |
 
-The patch list is fetched from `file_url + PatchList` and each entry is downloaded relative to the launcher’s directory.
+The patch list is fetched from `file_url + PatchList` and each entry is downloaded relative to the launcher’s directory. The launcher now normalizes `file_url` so either `https://host/path` or `https://host/path/` works.
 
 ### `patcher.config.json`
 
