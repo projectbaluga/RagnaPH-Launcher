@@ -1,5 +1,5 @@
 using System.IO;
-using System.Text.Json;
+using Newtonsoft.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -22,18 +22,16 @@ public sealed class PatchStateStore
         if (!File.Exists(_path))
             return new PatchState(0, new());
 
-        using var stream = File.OpenRead(_path);
-        var state = await JsonSerializer.DeserializeAsync<PatchState>(stream, cancellationToken: ct);
+        var json = await File.ReadAllTextAsync(_path, ct);
+        var state = JsonConvert.DeserializeObject<PatchState>(json);
         return state ?? new PatchState(0, new());
     }
 
     public async Task SaveAsync(PatchState state, CancellationToken ct = default)
     {
         var tempPath = _path + ".new";
-        using (var stream = File.Create(tempPath))
-        {
-            await JsonSerializer.SerializeAsync(stream, state, cancellationToken: ct);
-        }
+        var json = JsonConvert.SerializeObject(state);
+        await File.WriteAllTextAsync(tempPath, json, ct);
         if (File.Exists(_path))
             File.Delete(_path);
         File.Move(tempPath, _path);

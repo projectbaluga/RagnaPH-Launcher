@@ -24,7 +24,7 @@ public sealed class HttpPatchSource : IPatchSource
         {
             try
             {
-                var plist = await _httpClient.GetStringAsync(server.PlistUrl, ct);
+                var plist = await _httpClient.GetStringAsync(server.PlistUrl);
                 return PatchListParser.Parse(plist, server.PatchUrl);
             }
             catch

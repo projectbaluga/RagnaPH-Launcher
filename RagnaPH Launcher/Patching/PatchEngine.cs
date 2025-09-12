@@ -65,7 +65,7 @@ public sealed class PatchEngine : IPatchEngine
         Report("download", job.Id, null, null);
         var path = await _downloader.DownloadAsync(job, ct);
 
-        await using var thor = _thorFactory();
+        using var thor = _thorFactory();
         var manifest = await thor.ReadManifestAsync(path, ct);
 
         var targetGrf = job.TargetGrf ?? manifest.TargetGrf ?? _config.Patching.DefaultTargetGrf;
@@ -75,13 +75,14 @@ public sealed class PatchEngine : IPatchEngine
 
         await merger.MergeAsync(grfPath, async grf =>
         {
-            await foreach (var entry in thor.ReadEntriesAsync(path, ct))
+            var entries = await thor.ReadEntriesAsync(path, ct);
+            foreach (var entry in entries)
             {
                 Report("apply", job.Id, null, null);
                 switch (entry.Kind)
                 {
                     case ThorEntryKind.File:
-                        await using (var stream = await entry.OpenStreamAsync())
+                        using (var stream = await entry.OpenStreamAsync())
                         {
                             await grf.AddOrReplaceAsync(entry.VirtualPath, stream, ct);
                         }
