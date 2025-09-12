@@ -98,6 +98,7 @@
     <Compile Include="Patching\PatchConfigLoader.cs" />
     <Compile Include="Patching\PatchEngine.cs" />
     <Compile Include="Patching\PatchListParser.cs" />
+    <Compile Include="Patching\PatchNameUtils.cs" />
     <Compile Include="Patching\PatchStateStore.cs" />
     <Compile Include="Patching\JsonConvertShim.cs" />
     <Compile Include="Patching\MockGrfEditor.cs" />
