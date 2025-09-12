@@ -159,8 +159,7 @@ namespace RagnaPHPatcher
 
                 try
                 {
-                    var uri = PatchUrlBuilder.Build(baseUri, manifestPath.Replace("\\", "/"));
-                    var thorPath = await PatchDownloader.DownloadThorAsync(uri, cacheDir, CancellationToken.None);
+                    var thorPath = await PatchDownloader.DownloadThorAsync(baseUri, manifestPath, cacheDir, CancellationToken.None);
 
                     if (Path.GetExtension(manifestPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
                     {
@@ -290,8 +289,7 @@ namespace RagnaPHPatcher
 
                 try
                 {
-                    var uri = PatchUrlBuilder.Build(baseUri, manifestPath.Replace("\\", "/"));
-                    var thorPath = await PatchDownloader.DownloadThorAsync(uri, cacheDir, CancellationToken.None);
+                    var thorPath = await PatchDownloader.DownloadThorAsync(baseUri, manifestPath, cacheDir, CancellationToken.None);
 
                     if (Path.GetExtension(manifestPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
                     {
