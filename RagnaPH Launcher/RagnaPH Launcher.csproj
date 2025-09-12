@@ -89,6 +89,7 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Net\PatchUrlBuilder.cs" />
     <Compile Include="Patching\GrfMerger.cs" />
     <Compile Include="Patching\HttpPatchDownloader.cs" />
     <Compile Include="Patching\HttpPatchSource.cs" />
@@ -98,7 +99,7 @@
     <Compile Include="Patching\PatchEngine.cs" />
     <Compile Include="Patching\PatchListParser.cs" />
     <Compile Include="Patching\PatchNameUtils.cs" />
-    <Compile Include="Patching\PatchDownloadUtils.cs" />
+    <Compile Include="Patching\PatchDownloader.cs" />
     <Compile Include="Patching\ThorPatcher.cs" />
     <Compile Include="Patching\PatchStateStore.cs" />
     <Compile Include="Patching\JsonConvertShim.cs" />

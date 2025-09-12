@@ -5,11 +5,13 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Navigation;
 using RagnaPH.Patching;
+using RagnaPH.Launcher.Net;
 
 namespace RagnaPHPatcher
 {
@@ -40,17 +42,6 @@ namespace RagnaPHPatcher
             }
 
             return errors == SslPolicyErrors.None;
-        }
-
-        private static string CombineUrl(string baseUrl, string relativePath)
-        {
-            if (!baseUrl.EndsWith("/"))
-                baseUrl += "/";
-
-            relativePath = relativePath.Replace("\\", "/").TrimStart('/');
-            var segments = relativePath.Split(new[] {'/'}, StringSplitOptions.RemoveEmptyEntries)
-                                      .Select(Uri.EscapeDataString);
-            return baseUrl + string.Join("/", segments);
         }
 
         private void LoadNewsPage()
@@ -107,6 +98,7 @@ namespace RagnaPHPatcher
             string policyMsg = config.Get("Main", "policy_msg", "Server under maintenance.");
             string fileUrl = config.Get("Main", "file_url", "");
             string patchListFile = config.Get("Patch", "PatchList", "patchlist.txt");
+            var baseUri = new Uri(fileUrl);
 
             if (!allow)
             {
@@ -125,7 +117,7 @@ namespace RagnaPHPatcher
                 string patchListUrl = string.Empty;
                 foreach (var candidate in new[] { patchListFile, "plist.txt", "patchlist.txt" })
                 {
-                    patchListUrl = CombineUrl(fileUrl, candidate);
+                    patchListUrl = PatchUrlBuilder.Build(baseUri, candidate).ToString();
                     try
                     {
                         patchListContent = await Http.GetStringAsync(patchListUrl);
@@ -145,60 +137,60 @@ namespace RagnaPHPatcher
             catch (Exception ex)
             {
                 MessageBox.Show(
-                    "Failed to download patch list from " + CombineUrl(fileUrl, patchListFile) + ":\n" + ex.Message,
+                    "Failed to download patch list from " + PatchUrlBuilder.Build(baseUri, patchListFile) + ":\n" + ex.Message,
                     "Patch Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            await DownloadPatchFiles(fileUrl, patchFiles);
+            await DownloadPatchFiles(baseUri, patchFiles);
         }
 
-        private async Task DownloadPatchFiles(string baseUrl, string[] files)
+        private async Task DownloadPatchFiles(Uri baseUri, string[] files)
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string cacheDir = Path.Combine(baseDir, "PatchCache");
 
             int total = files.Length;
 
             for (int i = 0; i < total; i++)
             {
-                string relativePath = files[i].Split(new[] { '|', ',' }, 2)[0].Trim();
-                if (string.IsNullOrWhiteSpace(relativePath)) continue;
-
-                string url = CombineUrl(baseUrl, relativePath.Replace("\\", "/"));
-                string finalPath = Path.Combine(baseDir, relativePath.Replace("/", "\\"));
+                string manifestPath = files[i].Split(new[] { '|', ',' }, 2)[0].Trim();
+                if (string.IsNullOrWhiteSpace(manifestPath)) continue;
 
                 try
                 {
-                    string finalDir = Path.GetDirectoryName(finalPath);
-                    if (!Directory.Exists(finalDir)) Directory.CreateDirectory(finalDir);
+                    var uri = PatchUrlBuilder.Build(baseUri, manifestPath.Replace("\\", "/"));
+                    var thorPath = await PatchDownloader.DownloadThorAsync(uri, cacheDir, CancellationToken.None);
 
-                    byte[] data = await Http.GetByteArrayAsync(url);
-                    File.WriteAllBytes(finalPath, data);
-
-                    if (Path.GetExtension(finalPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
+                    if (Path.GetExtension(manifestPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
                     {
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
-                            ThorPatcher.ApplyPatch(finalPath, grfPath);
+                            ThorPatcher.ApplyPatch(thorPath, grfPath);
                         }
                         catch (Exception ex)
                         {
-                            MessageBox.Show("Failed applying thor patch: " + relativePath + "\n" + ex.Message,
+                            MessageBox.Show("Failed applying thor patch: " + manifestPath + "\n" + ex.Message,
                                 "Patch Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                             continue;
                         }
                     }
                 }
+                catch (HttpRequestException ex)
+                {
+                    MessageBox.Show(ex.Message, "Patch Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    continue;
+                }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Failed patching: " + relativePath + "\n" + ex.Message, "Patch Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show("Failed patching: " + manifestPath + "\n" + ex.Message, "Patch Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                     continue;
                 }
 
                 int progress = (int)(((i + 1) / (double)total) * 100);
                 PatcherProgressBar.Value = progress;
-                ProgressText.Text = "Patching: " + relativePath + " (" + progress + "%)";
+                ProgressText.Text = "Patching: " + manifestPath + " (" + progress + "%)";
             }
 
             ProgressText.Text = "Patching complete.";
@@ -265,81 +257,71 @@ namespace RagnaPHPatcher
 
             string fileUrl = config.Get("Main", "file_url", "");
             string patchListFile = config.Get("Patch", "PatchList", "patchlist.txt");
+            var baseUri = new Uri(fileUrl);
 
             string[] patchFiles;
             try
             {
-                string patchListUrl = CombineUrl(fileUrl, patchListFile);
+                string patchListUrl = PatchUrlBuilder.Build(baseUri, patchListFile).ToString();
                 string patchListContent = await Http.GetStringAsync(patchListUrl);
                 patchFiles = patchListContent.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Failed to download patch list from " + CombineUrl(fileUrl, patchListFile) + ":\n" + ex.Message,
+                MessageBox.Show("Failed to download patch list from " + PatchUrlBuilder.Build(baseUri, patchListFile) + ":\n" + ex.Message,
                     "Check Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            await CheckPatchFiles(fileUrl, patchFiles);
+            await CheckPatchFiles(baseUri, patchFiles);
         }
 
-        private async Task CheckPatchFiles(string baseUrl, string[] files)
+        private async Task CheckPatchFiles(Uri baseUri, string[] files)
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string cacheDir = Path.Combine(baseDir, "PatchCache");
 
             int total = files.Length;
 
             for (int i = 0; i < total; i++)
             {
-                string relativePath = files[i].Split(new[] { '|', ',' }, 2)[0].Trim();
-                if (string.IsNullOrWhiteSpace(relativePath)) continue;
-
-                string url = CombineUrl(baseUrl, relativePath.Replace("\\", "/"));
-                string finalPath = Path.Combine(baseDir, relativePath.Replace("/", "\\"));
+                string manifestPath = files[i].Split(new[] { '|', ',' }, 2)[0].Trim();
+                if (string.IsNullOrWhiteSpace(manifestPath)) continue;
 
                 try
                 {
-                    bool downloaded = false;
-                    if (!File.Exists(finalPath))
-                    {
-                        string finalDir = Path.GetDirectoryName(finalPath);
-                        if (!Directory.Exists(finalDir)) Directory.CreateDirectory(finalDir);
+                    var uri = PatchUrlBuilder.Build(baseUri, manifestPath.Replace("\\", "/"));
+                    var thorPath = await PatchDownloader.DownloadThorAsync(uri, cacheDir, CancellationToken.None);
 
-                        byte[] data = await Http.GetByteArrayAsync(url);
-                        File.WriteAllBytes(finalPath, data);
-
-                        downloaded = true;
-                    }
-
-                    if (Path.GetExtension(finalPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
+                    if (Path.GetExtension(manifestPath).Equals(".thor", StringComparison.OrdinalIgnoreCase))
                     {
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
-                            ThorPatcher.ApplyPatch(finalPath, grfPath);
+                            ThorPatcher.ApplyPatch(thorPath, grfPath);
                         }
                         catch (Exception ex)
                         {
-                            MessageBox.Show("Failed applying thor patch: " + relativePath + "\n" + ex.Message,
+                            MessageBox.Show("Failed applying thor patch: " + manifestPath + "\n" + ex.Message,
                                 "Check Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                             continue;
                         }
                     }
-
-                    if (downloaded)
-                    {
-                        // Optionally report file download
-                    }
+                }
+                catch (HttpRequestException ex)
+                {
+                    MessageBox.Show(ex.Message, "Check Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    continue;
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Failed checking: " + relativePath + "\n" + ex.Message, "Check Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBox.Show("Failed checking: " + manifestPath + "\n" + ex.Message, "Check Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                     continue;
                 }
 
                 int progress = (int)(((i + 1) / (double)total) * 100);
                 PatcherProgressBar.Value = progress;
-                ProgressText.Text = "Checking: " + relativePath + " (" + progress + "%)";
+                ProgressText.Text = "Checking: " + manifestPath + " (" + progress + "%)";
             }
 
             ProgressText.Text = "File check complete.";

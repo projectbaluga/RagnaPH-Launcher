@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
+using RagnaPH.Launcher.Net;
 
 namespace RagnaPH.Patching;
 
@@ -89,8 +90,7 @@ public static class PatchListParser
             // Normalize the path without encoding; encoding is handled when
             // constructing the final URI.
             var normalizedPath = PatchNameUtils.NormalizePath(filePath);
-            var baseUri = patchBaseUrl.EndsWith("/") ? patchBaseUrl : patchBaseUrl + "/";
-            var url = PatchDownloadUtils.BuildPatchUri(new Uri(baseUri), normalizedPath);
+            var url = PatchUrlBuilder.Build(new Uri(patchBaseUrl), normalizedPath);
             jobs.Add(new PatchJob(id, normalizedPath, url, target, size, sha));
         }
 
