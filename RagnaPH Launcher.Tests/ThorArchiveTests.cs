@@ -19,7 +19,7 @@ public class ThorArchiveTests
         {
             File.WriteAllText(path, "not a thor");
             var ex = Assert.Throws<InvalidDataException>(() => ThorArchive.Open(path));
-            Assert.Contains("Bad THOR header", ex.Message);
+            Assert.Contains("THOR: BAD_HEADER", ex.Message);
         }
         finally
         {
@@ -59,7 +59,7 @@ public class ThorArchiveTests
             {
                 using var stream = await archive.OpenEntryStreamAsync(entry);
             });
-            Assert.Contains("Payload corruption", ex.Message);
+            Assert.Contains("THOR: BAD_CRC hello.txt", ex.Message);
         }
         finally
         {
@@ -67,7 +67,43 @@ public class ThorArchiveTests
         }
     }
 
-    private static void CreateSimpleThor(string path, string fileName, string content, bool corruptCrc = false)
+    [Fact]
+    public void Open_LenientOffset_Passes()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            CreateSimpleThor(path, "ok.txt", "hi", overrideTableOffset: 0);
+            using var archive = ThorArchive.Open(path);
+            Assert.Single(archive.Entries);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Open_TruncatedTable_Throws()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            CreateSimpleThor(path, "oops.txt", "oops");
+            using (var fs = new FileStream(path, FileMode.Open))
+            {
+                fs.SetLength(fs.Length - 1);
+            }
+            var ex = Assert.Throws<InvalidDataException>(() => ThorArchive.Open(path));
+            Assert.Contains("THOR: BAD_TABLE", ex.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private static void CreateSimpleThor(string path, string fileName, string content, bool corruptCrc = false, int? overrideTableOffset = null)
     {
         var fileData = Encoding.UTF8.GetBytes(content);
         var compressedFile = CompressZlib(fileData);
@@ -109,7 +145,7 @@ public class ThorArchiveTests
         fs.Position = lenPos;
         bw.Write((int)tableLen);
         fs.Position = offPos;
-        bw.Write((int)tableOffset);
+        bw.Write(overrideTableOffset ?? (int)tableOffset);
     }
 
     private static byte[] CompressZlib(byte[] data)
