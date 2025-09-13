@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using ICSharpCode.SharpZipLib.Zip.Compression;
 using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
-using ICSharpCode.SharpZipLib.Checksums;
+using ICSharpCode.SharpZipLib.Checksum;
 using ICSharpCode.SharpZipLib;
 
 namespace RagnaPH.Patching;
