@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using ICSharpCode.SharpZipLib;
+using ICSharpCode.SharpZipLib.Checksum;
 using ICSharpCode.SharpZipLib.Zip.Compression;
 using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
-using ICSharpCode.SharpZipLib.Checksum;
-using ICSharpCode.SharpZipLib;
 
 namespace RagnaPH.Patching;
 
@@ -18,6 +18,8 @@ namespace RagnaPH.Patching;
 /// </summary>
 public sealed class ThorArchive : IDisposable
 {
+    private const string Magic = "ASSF (C) 2007 Aeomin DEV";
+
     private readonly string _path;
     private readonly Header _header;
     private readonly List<ThorEntry> _entries;
@@ -29,23 +31,14 @@ public sealed class ThorArchive : IDisposable
         _entries = entries;
     }
 
-    /// <summary>
-    /// Gets the target GRF file name suggested by the archive. May be
-    /// <c>null</c> if the archive does not specify one.
-    /// </summary>
+    /// <summary>Gets the target GRF file name suggested by the archive.</summary>
     public string? TargetGrf => _header.TargetGrf;
 
-    /// <summary>
-    /// Gets the list of file entries contained in the archive.
-    /// </summary>
+    /// <summary>Gets the list of file entries contained in the archive.</summary>
     public IReadOnlyList<ThorEntry> Entries => _entries;
 
-    /// <summary>
-    /// Opens a THOR archive from disk and parses its header and file table.
-    /// </summary>
-    /// <param name="thorPath">Path to the THOR file.</param>
-    /// <exception cref="InvalidDataException">Thrown when the archive is
-    /// malformed.</exception>
+    /// <summary>Opens a THOR archive from disk.</summary>
+    /// <exception cref="InvalidDataException">Thrown when the archive is malformed.</exception>
     public static ThorArchive Open(string thorPath)
     {
         using var fs = File.OpenRead(thorPath);
@@ -69,7 +62,7 @@ public sealed class ThorArchive : IDisposable
             fs.Position = entry.Offset;
             var read = await fs.ReadAsync(buffer, 0, buffer.Length);
             if (read != buffer.Length)
-                throw new InvalidDataException("Payload corruption");
+                throw new InvalidDataException("THOR: BAD_COMPRESSION");
         }
 
         byte[] data;
@@ -87,12 +80,12 @@ public sealed class ThorArchive : IDisposable
         }
 
         if (data.Length != entry.UncompressedSize)
-            throw new InvalidDataException("Payload corruption");
+            throw new InvalidDataException("THOR: BAD_COMPRESSION");
 
         var crc32 = new Crc32();
         crc32.Update(data);
         if ((uint)crc32.Value != entry.Crc)
-            throw new InvalidDataException("Payload corruption");
+            throw new InvalidDataException($"THOR: BAD_CRC {entry.VirtualPath}");
 
         return new MemoryStream(data, writable: false);
     }
@@ -101,86 +94,115 @@ public sealed class ThorArchive : IDisposable
     {
         var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: true);
         var magic = Encoding.ASCII.GetString(reader.ReadBytes(24));
-        if (magic != "ASSF (C) 2007 Aeomin DEV")
-            throw new InvalidDataException("Bad THOR header");
+        if (magic != Magic)
+            throw new InvalidDataException("THOR: BAD_HEADER");
 
         byte version = reader.ReadByte();
-        int fileCount = reader.ReadInt32();
+        uint fileCount = reader.ReadUInt32();
         short mode = reader.ReadInt16();
 
         string targetGrf = string.Empty;
-        int tableCompressedLength = 0;
-        int tableOffset = 0;
-        int dataOffset = 0;
+        uint tableSize = 0;
+        uint tableOffset = 0;
+        long headerEnd;
+        bool tableCompressed;
 
         switch (mode)
         {
             case 0x30:
                 int len = reader.ReadByte();
                 targetGrf = Encoding.ASCII.GetString(reader.ReadBytes(len));
-                tableCompressedLength = reader.ReadInt32();
-                tableOffset = reader.ReadInt32();
-                dataOffset = (int)reader.BaseStream.Position;
+                tableSize = reader.ReadUInt32();
+                tableOffset = reader.ReadUInt32();
+                tableCompressed = true;
+                headerEnd = reader.BaseStream.Position;
                 break;
             case 0x21:
                 int len2 = reader.ReadByte();
                 targetGrf = Encoding.ASCII.GetString(reader.ReadBytes(len2));
                 reader.ReadByte(); // padding
-                tableOffset = (int)reader.BaseStream.Position;
-                dataOffset = tableOffset;
+                tableCompressed = false;
+                tableOffset = (uint)reader.BaseStream.Position;
+                headerEnd = reader.BaseStream.Position;
+                tableSize = (uint)(stream.Length - tableOffset);
                 break;
             default:
-                throw new InvalidDataException("Bad THOR header");
+                throw new InvalidDataException("THOR: BAD_HEADER");
         }
 
-        if (tableOffset <= dataOffset)
-            throw new InvalidDataException("File table offset mismatch");
+        long fileLength = stream.Length;
+        long tableOffsetLong = tableOffset;
+        long tableSizeLong = tableSize;
 
-        return new Header(version, fileCount, targetGrf, tableCompressedLength,
-            tableOffset, dataOffset, mode);
+        bool Valid(long off) => off >= headerEnd && off + tableSizeLong == fileLength;
+
+        if (!Valid(tableOffsetLong))
+        {
+            long rel = headerEnd + tableOffsetLong;
+            if (Valid(rel))
+            {
+                tableOffsetLong = rel;
+            }
+            else
+            {
+                long expected = fileLength - tableSizeLong;
+                if (Valid(expected))
+                {
+                    tableOffsetLong = expected;
+                }
+                else
+                {
+                    throw new InvalidDataException($"THOR: BAD_TABLE offset/size mismatch (offset {tableOffsetLong}, size {tableSizeLong}, length {fileLength})");
+                }
+            }
+        }
+
+        return new Header(version, (int)fileCount, targetGrf, tableSizeLong, tableOffsetLong, headerEnd, tableCompressed);
     }
 
     private static List<ThorEntry> ReadEntries(Stream fs, string thorPath, Header header)
     {
         var entries = new List<ThorEntry>();
-
         fs.Position = header.FileTableOffset;
-        byte[] tableData;
-        if (header.FileTableCompressedLength > 0)
-        {
-            var compressed = new byte[header.FileTableCompressedLength];
-            fs.Read(compressed, 0, compressed.Length);
-            tableData = DecompressZlib(compressed);
-        }
-        else
-        {
-            tableData = new byte[fs.Length - fs.Position];
-            fs.Read(tableData, 0, tableData.Length);
-        }
+
+        var tableBuf = new byte[header.FileTableSize];
+        var read = fs.Read(tableBuf, 0, tableBuf.Length);
+        if (read != tableBuf.Length)
+            throw new InvalidDataException("THOR: BAD_TABLE");
+
+        byte[] tableData = header.TableCompressed ? DecompressZlib(tableBuf) : tableBuf;
 
         using var tableStream = new MemoryStream(tableData);
         using var reader = new BinaryReader(tableStream, Encoding.ASCII);
-        while (tableStream.Position < tableStream.Length)
+        try
         {
-            byte nameLen = reader.ReadByte();
-            var rawName = Encoding.ASCII.GetString(reader.ReadBytes(nameLen));
-            var name = NormalizeEntryPath(rawName);
-            byte flags = reader.ReadByte();
-            uint offset = reader.ReadUInt32();
-            int sizeCompressed = reader.ReadInt32();
-            int sizeDecompressed = reader.ReadInt32();
-            uint crc = reader.ReadUInt32();
+            while (tableStream.Position < tableStream.Length)
+            {
+                byte nameLen = reader.ReadByte();
+                var rawName = Encoding.ASCII.GetString(reader.ReadBytes(nameLen));
+                var name = NormalizeEntryPath(rawName);
+                byte flags = reader.ReadByte();
+                uint offset = reader.ReadUInt32();
+                int sizeCompressed = checked((int)reader.ReadUInt32());
+                int sizeDecompressed = checked((int)reader.ReadUInt32());
+                uint crc = reader.ReadUInt32();
 
-            long dataPos = header.DataOffset + offset;
-            if (dataPos + sizeCompressed > header.FileTableOffset)
-                throw new InvalidDataException("File table offset mismatch");
+                long dataPos = checked(header.DataOffset + offset);
+                long endPos = checked(dataPos + (uint)sizeCompressed);
+                if (endPos > header.FileTableOffset)
+                    throw new InvalidDataException("THOR: BAD_TABLE");
 
-            entries.Add(new ThorEntry(name, flags, (int)dataPos,
-                sizeCompressed, sizeDecompressed, crc));
+                entries.Add(new ThorEntry(name, flags, (int)dataPos,
+                    sizeCompressed, sizeDecompressed, crc));
+            }
+        }
+        catch (EndOfStreamException)
+        {
+            throw new InvalidDataException("THOR: BAD_TABLE");
         }
 
         if (entries.Count != header.FileCount)
-            throw new InvalidDataException("File table offset mismatch");
+            throw new InvalidDataException("THOR: BAD_TABLE");
 
         return entries;
     }
@@ -192,7 +214,7 @@ public sealed class ThorArchive : IDisposable
         {
             return result;
         }
-        throw new InvalidDataException("Payload corruption");
+        throw new InvalidDataException("THOR: BAD_COMPRESSION");
     }
 
     private static bool TryDecompress(byte[] data, bool header, out byte[] result)
@@ -216,13 +238,13 @@ public sealed class ThorArchive : IDisposable
     private static string NormalizeEntryPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
-            throw new InvalidDataException("Bad THOR header");
+            throw new InvalidDataException("THOR: BAD_HEADER");
 
         var segments = path.Replace('\\', '/').Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
         foreach (var seg in segments)
         {
             if (seg == "." || seg == "..")
-                throw new InvalidDataException("Bad THOR header");
+                throw new InvalidDataException("THOR: BAD_HEADER");
         }
 
         return string.Join("/", segments);
@@ -234,11 +256,9 @@ public sealed class ThorArchive : IDisposable
     }
 
     private sealed record Header(byte Version, int FileCount, string TargetGrf,
-        int FileTableCompressedLength, int FileTableOffset, int DataOffset, short Mode);
+        long FileTableSize, long FileTableOffset, long DataOffset, bool TableCompressed);
 
-    /// <summary>
-    /// Represents a file entry in the THOR archive.
-    /// </summary>
+    /// <summary>Represents a file entry in the THOR archive.</summary>
     public sealed record ThorEntry(string VirtualPath, byte Flags, int Offset,
         int CompressedSize, int UncompressedSize, uint Crc)
     {
@@ -247,9 +267,7 @@ public sealed class ThorArchive : IDisposable
             : ThorEntryKind.File;
     }
 
-    /// <summary>
-    /// Type of THOR entry.
-    /// </summary>
+    /// <summary>Type of THOR entry.</summary>
     public enum ThorEntryKind { File, Delete, Directory }
 }
 
