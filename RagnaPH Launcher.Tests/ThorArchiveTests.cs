@@ -152,6 +152,28 @@ public class ThorArchiveTests
     }
 
     [Fact]
+    public async Task ReadEntries_MultipleEntriesWithSpans_Passes()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            CreateTwoEntryThor(path);
+            using var archive = ThorArchive.Open(path);
+            Assert.Equal(2, archive.Entries.Count);
+            using (var s1 = await archive.OpenEntryStreamAsync(archive.Entries[0]))
+            using (var sr1 = new StreamReader(s1))
+                Assert.Equal("one", await sr1.ReadToEndAsync());
+            using (var s2 = await archive.OpenEntryStreamAsync(archive.Entries[1]))
+            using (var sr2 = new StreamReader(s2))
+                Assert.Equal("two", await sr2.ReadToEndAsync());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Open_TruncatedTable_Throws()
     {
         var path = Path.GetTempFileName();
@@ -267,6 +289,64 @@ public class ThorArchiveTests
         bw.Write((int)tableLen2);
         fs.Position = offPos;
         bw.Write(overrideTableOffset ?? (int)tableOffset);
+    }
+
+    private static void CreateTwoEntryThor(string path)
+    {
+        var data1 = Encoding.UTF8.GetBytes("one");
+        var data2 = Encoding.UTF8.GetBytes("two");
+        var comp1 = CompressZlib(data1);
+        var comp2 = CompressZlib(data2);
+        var crc = new Crc32();
+
+        using var fs = File.Create(path);
+        using var bw = new BinaryWriter(fs, Encoding.ASCII, leaveOpen: true);
+        bw.Write(Encoding.ASCII.GetBytes("ASSF (C) 2007 Aeomin DEV"));
+        bw.Write((byte)1);
+        bw.Write(2); // file count
+        bw.Write((short)0x30);
+        bw.Write((byte)0); // target len
+        long lenPos = fs.Position;
+        bw.Write(0); // table len placeholder
+        long offPos = fs.Position;
+        bw.Write(0); // table offset placeholder
+
+        long dataOffset1 = fs.Position;
+        bw.Write(comp1);
+        long dataOffset2 = fs.Position;
+        bw.Write(comp2);
+        long tableOffset = fs.Position;
+
+        using var tableMs = new MemoryStream();
+        using (var tableBw = new BinaryWriter(tableMs, Encoding.UTF8, leaveOpen: true))
+        {
+            // entry 1 with oversized compSize
+            tableBw.Write(Encoding.UTF8.GetBytes("f1.txt"));
+            tableBw.Write((byte)0);
+            tableBw.Write(1000u);
+            tableBw.Write((uint)data1.Length);
+            tableBw.Write(0u); // offset relative to header end
+            crc.Reset(); crc.Update(data1); tableBw.Write((uint)crc.Value);
+            tableBw.Write((byte)0);
+            while (tableMs.Position % 4 != 0) tableBw.Write((byte)0);
+
+            // entry 2 with compSize=0 to be inferred
+            tableBw.Write(Encoding.UTF8.GetBytes("f2.txt"));
+            tableBw.Write((byte)0);
+            tableBw.Write(0u);
+            tableBw.Write((uint)data2.Length);
+            tableBw.Write((uint)(dataOffset2 - dataOffset1));
+            crc.Reset(); crc.Update(data2); tableBw.Write((uint)crc.Value);
+            tableBw.Write((byte)0);
+            while (tableMs.Position % 4 != 0) tableBw.Write((byte)0);
+        }
+
+        var tableCompressed = CompressZlib(tableMs.ToArray());
+        bw.Write(tableCompressed);
+        bw.Flush();
+        long tableLen = tableCompressed.Length;
+        fs.Position = lenPos; bw.Write((int)tableLen);
+        fs.Position = offPos; bw.Write((int)tableOffset);
     }
 
     private static byte[] CompressZlib(byte[] data)
