@@ -11,6 +11,7 @@ namespace RagnaPH.Launcher.Tests;
 
 public class ThorArchiveTests
 {
+    private enum DataOffsetBase { HeaderEnd, Absolute, TableEnd }
     [Fact]
     public void Open_InvalidFile_ThrowsFriendlyMessage()
     {
@@ -100,6 +101,38 @@ public class ThorArchiveTests
     }
 
     [Fact]
+    public void ReadEntries_AbsoluteOffset_Passes()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            CreateSimpleThor(path, "abs.txt", "hi", dataOffsetBase: DataOffsetBase.Absolute);
+            using var archive = ThorArchive.Open(path);
+            Assert.Single(archive.Entries);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void ReadEntries_TableEndOffset_Passes()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            CreateSimpleThor(path, "after.txt", "yo", dataOffsetBase: DataOffsetBase.TableEnd);
+            using var archive = ThorArchive.Open(path);
+            Assert.Single(archive.Entries);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Open_TruncatedTable_Throws()
     {
         var path = Path.GetTempFileName();
@@ -119,7 +152,7 @@ public class ThorArchiveTests
         }
     }
 
-    private static void CreateSimpleThor(string path, string fileName, string content, bool corruptCrc = false, int? overrideTableOffset = null, bool lengthPrefixedPath = false)
+    private static void CreateSimpleThor(string path, string fileName, string content, bool corruptCrc = false, int? overrideTableOffset = null, bool lengthPrefixedPath = false, DataOffsetBase dataOffsetBase = DataOffsetBase.HeaderEnd)
     {
         var fileData = Encoding.UTF8.GetBytes(content);
         var compressedFile = CompressZlib(fileData);
@@ -140,11 +173,48 @@ public class ThorArchiveTests
         bw.Write(0); // table length placeholder
         long offPos = fs.Position;
         bw.Write(0); // table offset placeholder
+        if (dataOffsetBase == DataOffsetBase.TableEnd)
+        {
+            long tableOffset = fs.Position;
+            using var tableMs = new MemoryStream();
+            using (var tableBw = new BinaryWriter(tableMs, Encoding.UTF8, leaveOpen: true))
+            {
+                if (lengthPrefixedPath)
+                {
+                    var nameBytes = Encoding.UTF8.GetBytes(fileName);
+                    tableBw.Write((ushort)nameBytes.Length);
+                    tableBw.Write(nameBytes);
+                }
+                else
+                {
+                    tableBw.Write(Encoding.UTF8.GetBytes(fileName));
+                    tableBw.Write((byte)0); // NUL terminator
+                }
+                tableBw.Write((uint)compressedFile.Length); // compSize
+                tableBw.Write((uint)fileData.Length);       // uncompSize
+                tableBw.Write((uint)0);                     // dataOffset relative to table end
+                tableBw.Write(crc);                         // crc32
+                tableBw.Write((byte)0);                     // flags
+                while (tableMs.Position % 4 != 0)
+                    tableBw.Write((byte)0);
+            }
+            var tableCompressed = CompressZlib(tableMs.ToArray());
+            bw.Write(tableCompressed);
+            long tableLen = tableCompressed.Length;
+            bw.Write(compressedFile); // data after table
+            bw.Flush();
+            fs.Position = lenPos;
+            bw.Write((int)tableLen);
+            fs.Position = offPos;
+            bw.Write((int)tableOffset);
+            return;
+        }
+
         long dataOffset = fs.Position;
-        bw.Write(compressedFile); // file data
+        bw.Write(compressedFile); // file data before table
         long tableOffset = fs.Position;
-        using var tableMs = new MemoryStream();
-        using (var tableBw = new BinaryWriter(tableMs, Encoding.UTF8, leaveOpen: true))
+        using var tableMs2 = new MemoryStream();
+        using (var tableBw = new BinaryWriter(tableMs2, Encoding.UTF8, leaveOpen: true))
         {
             if (lengthPrefixedPath)
             {
@@ -159,18 +229,23 @@ public class ThorArchiveTests
             }
             tableBw.Write((uint)compressedFile.Length); // compSize
             tableBw.Write((uint)fileData.Length);       // uncompSize
-            tableBw.Write((uint)0);                     // dataOffset
+            uint storedOffset = dataOffsetBase switch
+            {
+                DataOffsetBase.Absolute => (uint)dataOffset,
+                _ => 0u,
+            };
+            tableBw.Write(storedOffset);                // dataOffset
             tableBw.Write(crc);                         // crc32
             tableBw.Write((byte)0);                     // flags
-            while (tableMs.Position % 4 != 0)
+            while (tableMs2.Position % 4 != 0)
                 tableBw.Write((byte)0);
         }
-        var tableCompressed = CompressZlib(tableMs.ToArray());
-        bw.Write(tableCompressed);
+        var tableCompressed2 = CompressZlib(tableMs2.ToArray());
+        bw.Write(tableCompressed2);
         bw.Flush();
-        long tableLen = tableCompressed.Length;
+        long tableLen2 = tableCompressed2.Length;
         fs.Position = lenPos;
-        bw.Write((int)tableLen);
+        bw.Write((int)tableLen2);
         fs.Position = offPos;
         bw.Write(overrideTableOffset ?? (int)tableOffset);
     }

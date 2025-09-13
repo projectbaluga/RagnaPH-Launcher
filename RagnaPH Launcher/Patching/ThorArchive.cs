@@ -23,12 +23,14 @@ public sealed class ThorArchive : IDisposable
     private readonly string _path;
     private readonly Header _header;
     private readonly List<ThorEntry> _entries;
+    private readonly long _dataBase;
 
-    private ThorArchive(string path, Header header, List<ThorEntry> entries)
+    private ThorArchive(string path, Header header, List<ThorEntry> entries, long dataBase)
     {
         _path = path;
         _header = header;
         _entries = entries;
+        _dataBase = dataBase;
     }
 
     /// <summary>Gets the target GRF file name suggested by the archive.</summary>
@@ -43,8 +45,8 @@ public sealed class ThorArchive : IDisposable
     {
         using var fs = File.OpenRead(thorPath);
         var header = ReadHeader(fs);
-        var entries = ReadEntries(fs, thorPath, header);
-        return new ThorArchive(thorPath, header, entries);
+        var (entries, dataBase) = ReadEntries(fs, header);
+        return new ThorArchive(thorPath, header, entries, dataBase);
     }
 
     /// <summary>
@@ -62,7 +64,7 @@ public sealed class ThorArchive : IDisposable
         var buffer = new byte[checked((int)entry.CompressedSize)];
         using (var fs = File.OpenRead(_path))
         {
-            fs.Position = entry.Offset;
+            fs.Position = checked(_dataBase + (long)entry.Offset);
             var read = await fs.ReadAsync(buffer, 0, buffer.Length);
             if (read != buffer.Length)
                 throw new InvalidDataException("THOR: BAD_COMPRESSION");
@@ -163,9 +165,8 @@ public sealed class ThorArchive : IDisposable
         return new Header(version, (int)fileCount, targetGrf, tableSizeLong, tableOffsetLong, headerEnd, tableCompressed);
     }
 
-    private static List<ThorEntry> ReadEntries(Stream fs, string thorPath, Header header)
+    private static (List<ThorEntry> Entries, long DataBase) ReadEntries(Stream fs, Header header)
     {
-        var entries = new List<ThorEntry>();
         fs.Position = header.FileTableOffset;
 
         var tableBuf = new byte[header.FileTableSize];
@@ -181,6 +182,7 @@ public sealed class ThorArchive : IDisposable
             tableData = DecompressZlib(tableBuf);
         }
 
+        var rawEntries = new List<ThorEntry>();
         int index = 0;
         int pos = 0;
         while (pos < tableData.Length)
@@ -233,21 +235,66 @@ public sealed class ThorArchive : IDisposable
                 throw new InvalidDataException($"THOR: BAD_TABLE truncated entry {index} {path}");
             pos = aligned;
 
-            long dataPos = checked(header.DataOffset + (long)dataOffset);
-            long endPos = checked(dataPos + (long)compSize);
-            if (dataPos < header.DataOffset || endPos > header.FileTableOffset)
-                throw new InvalidDataException($"THOR: BAD_TABLE OOB entry {index} {path}");
-
-            entries.Add(new ThorEntry(path, flags, (uint)dataPos,
+            rawEntries.Add(new ThorEntry(path, flags, dataOffset,
                 compSize, uncompSize, crc));
-
             index++;
         }
 
         if (index != header.FileCount)
             throw new InvalidDataException("THOR: BAD_TABLE count mismatch");
 
-        return entries;
+        long fileLength = fs.Length;
+        long tableOffset = header.FileTableOffset;
+        long tableEnd = checked(tableOffset + header.FileTableSize);
+
+        long[] candidates = new[] { 0L, header.HeaderEnd, tableEnd };
+        long? dataBase = null;
+        foreach (long b in candidates)
+        {
+            bool ok = true;
+            foreach (var e in rawEntries)
+            {
+                long start = checked(b + (long)e.Offset);
+                long end = checked(start + (long)e.CompressedSize);
+                bool before = start >= b && end <= tableOffset;
+                bool after = start >= tableEnd && end <= fileLength;
+                if (!before && !after)
+                {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok)
+            {
+                dataBase = b;
+                break;
+            }
+        }
+
+        if (dataBase is null)
+        {
+            throw new InvalidDataException($"THOR: BAD_TABLE (no valid data span; table=[{tableOffset},{tableEnd}), length {fileLength})");
+        }
+
+        var entries = new List<ThorEntry>(rawEntries.Count);
+        long baseOffset = dataBase.Value;
+        for (int i = 0; i < rawEntries.Count; i++)
+        {
+            var e = rawEntries[i];
+            long start = checked(baseOffset + (long)e.Offset);
+            long end = checked(start + (long)e.CompressedSize);
+            bool before = start >= baseOffset && end <= tableOffset;
+            bool after = start >= tableEnd && end <= fileLength;
+            if (!before && !after)
+            {
+                throw new InvalidDataException($"THOR: BAD_TABLE OOB entry {i} {e.VirtualPath} start={start} end={end} base={baseOffset} before=[{baseOffset},{tableOffset}) after=[{tableEnd},{fileLength})");
+            }
+
+            entries.Add(new ThorEntry(e.VirtualPath, e.Flags, e.Offset,
+                e.CompressedSize, e.UncompressedSize, e.Crc));
+        }
+
+        return (entries, baseOffset);
     }
 
     private static byte[] DecompressZlib(byte[] data)
@@ -299,7 +346,7 @@ public sealed class ThorArchive : IDisposable
     }
 
     private sealed record Header(byte Version, int FileCount, string TargetGrf,
-        long FileTableSize, long FileTableOffset, long DataOffset, bool TableCompressed);
+        long FileTableSize, long FileTableOffset, long HeaderEnd, bool TableCompressed);
 
     /// <summary>Represents a file entry in the THOR archive.</summary>
     public sealed record ThorEntry(string VirtualPath, byte Flags, uint Offset,
