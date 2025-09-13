@@ -47,6 +47,22 @@ public class ThorArchiveTests
     }
 
     [Fact]
+    public void ReadEntries_LengthPrefixed_ReturnsFile()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            CreateSimpleThor(path, "hello.txt", "hi", lengthPrefixedPath: true);
+            using var archive = ThorArchive.Open(path);
+            Assert.Single(archive.Entries);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public async Task OpenEntry_CrcMismatch_Throws()
     {
         var path = Path.GetTempFileName();
@@ -103,7 +119,7 @@ public class ThorArchiveTests
         }
     }
 
-    private static void CreateSimpleThor(string path, string fileName, string content, bool corruptCrc = false, int? overrideTableOffset = null)
+    private static void CreateSimpleThor(string path, string fileName, string content, bool corruptCrc = false, int? overrideTableOffset = null, bool lengthPrefixedPath = false)
     {
         var fileData = Encoding.UTF8.GetBytes(content);
         var compressedFile = CompressZlib(fileData);
@@ -128,15 +144,26 @@ public class ThorArchiveTests
         bw.Write(compressedFile); // file data
         long tableOffset = fs.Position;
         using var tableMs = new MemoryStream();
-        using (var tableBw = new BinaryWriter(tableMs, Encoding.ASCII, leaveOpen: true))
+        using (var tableBw = new BinaryWriter(tableMs, Encoding.UTF8, leaveOpen: true))
         {
-            tableBw.Write((byte)fileName.Length);
-            tableBw.Write(Encoding.ASCII.GetBytes(fileName));
-            tableBw.Write((byte)0); // flags
-            tableBw.Write((uint)0); // offset
-            tableBw.Write(compressedFile.Length);
-            tableBw.Write(fileData.Length);
-            tableBw.Write(crc);
+            if (lengthPrefixedPath)
+            {
+                var nameBytes = Encoding.UTF8.GetBytes(fileName);
+                tableBw.Write((ushort)nameBytes.Length);
+                tableBw.Write(nameBytes);
+            }
+            else
+            {
+                tableBw.Write(Encoding.UTF8.GetBytes(fileName));
+                tableBw.Write((byte)0); // NUL terminator
+            }
+            tableBw.Write((uint)compressedFile.Length); // compSize
+            tableBw.Write((uint)fileData.Length);       // uncompSize
+            tableBw.Write((uint)0);                     // dataOffset
+            tableBw.Write(crc);                         // crc32
+            tableBw.Write((byte)0);                     // flags
+            while (tableMs.Position % 4 != 0)
+                tableBw.Write((byte)0);
         }
         var tableCompressed = CompressZlib(tableMs.ToArray());
         bw.Write(tableCompressed);

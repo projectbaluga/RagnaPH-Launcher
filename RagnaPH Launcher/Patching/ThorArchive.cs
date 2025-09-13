@@ -56,7 +56,10 @@ public sealed class ThorArchive : IDisposable
         if (entry.Kind != ThorEntryKind.File)
             return Stream.Null;
 
-        var buffer = new byte[entry.CompressedSize];
+        if (entry.CompressedSize > int.MaxValue)
+            throw new InvalidDataException("THOR: BAD_TABLE OOB size");
+
+        var buffer = new byte[checked((int)entry.CompressedSize)];
         using (var fs = File.OpenRead(_path))
         {
             fs.Position = entry.Offset;
@@ -79,7 +82,7 @@ public sealed class ThorArchive : IDisposable
             data = DecompressZlib(buffer);
         }
 
-        if (data.Length != entry.UncompressedSize)
+        if ((uint)data.Length != entry.UncompressedSize)
             throw new InvalidDataException("THOR: BAD_COMPRESSION");
 
         var crc32 = new Crc32();
@@ -168,41 +171,81 @@ public sealed class ThorArchive : IDisposable
         var tableBuf = new byte[header.FileTableSize];
         var read = fs.Read(tableBuf, 0, tableBuf.Length);
         if (read != tableBuf.Length)
-            throw new InvalidDataException("THOR: BAD_TABLE");
+            throw new InvalidDataException("THOR: BAD_TABLE truncated table");
 
-        byte[] tableData = header.TableCompressed ? DecompressZlib(tableBuf) : tableBuf;
-
-        using var tableStream = new MemoryStream(tableData);
-        using var reader = new BinaryReader(tableStream, Encoding.ASCII);
-        try
+        // Auto-detect zlib regardless of header flag
+        byte[] tableData = tableBuf;
+        if (tableBuf.Length >= 2 && tableBuf[0] == 0x78 &&
+            (tableBuf[1] == 0x01 || tableBuf[1] == 0x9C || tableBuf[1] == 0xDA))
         {
-            while (tableStream.Position < tableStream.Length)
+            tableData = DecompressZlib(tableBuf);
+        }
+
+        int index = 0;
+        int pos = 0;
+        while (pos < tableData.Length)
+        {
+            // Try to read C-string path
+            string path;
+            int nul = Array.IndexOf<byte>(tableData, 0, pos);
+            if (nul >= 0 && nul + 1 + 16 <= tableData.Length)
             {
-                byte nameLen = reader.ReadByte();
-                var rawName = Encoding.ASCII.GetString(reader.ReadBytes(nameLen));
-                var name = NormalizeEntryPath(rawName);
-                byte flags = reader.ReadByte();
-                uint offset = reader.ReadUInt32();
-                int sizeCompressed = checked((int)reader.ReadUInt32());
-                int sizeDecompressed = checked((int)reader.ReadUInt32());
-                uint crc = reader.ReadUInt32();
-
-                long dataPos = checked(header.DataOffset + offset);
-                long endPos = checked(dataPos + (uint)sizeCompressed);
-                if (endPos > header.FileTableOffset)
-                    throw new InvalidDataException("THOR: BAD_TABLE");
-
-                entries.Add(new ThorEntry(name, flags, (int)dataPos,
-                    sizeCompressed, sizeDecompressed, crc));
+                path = Encoding.UTF8.GetString(tableData, pos, nul - pos);
+                pos = nul + 1;
             }
-        }
-        catch (EndOfStreamException)
-        {
-            throw new InvalidDataException("THOR: BAD_TABLE");
+            else
+            {
+                // Fallback to UInt16 length-prefixed
+                if (pos + 2 > tableData.Length)
+                    throw new InvalidDataException($"THOR: BAD_TABLE truncated entry {index}");
+                int nameLen = tableData[pos] | (tableData[pos + 1] << 8);
+                pos += 2;
+                if (nameLen < 0 || pos + nameLen > tableData.Length)
+                    throw new InvalidDataException($"THOR: BAD_TABLE truncated entry {index}");
+                path = Encoding.UTF8.GetString(tableData, pos, nameLen);
+                pos += nameLen;
+            }
+
+            path = NormalizeEntryPath(path);
+
+            // Read the four UInt32 fields
+            if (pos + 16 > tableData.Length)
+                throw new InvalidDataException($"THOR: BAD_TABLE truncated entry {index} {path}");
+            uint compSize = BitConverter.ToUInt32(tableData, pos);
+            pos += 4;
+            uint uncompSize = BitConverter.ToUInt32(tableData, pos);
+            pos += 4;
+            uint dataOffset = BitConverter.ToUInt32(tableData, pos);
+            pos += 4;
+            uint crc = BitConverter.ToUInt32(tableData, pos);
+            pos += 4;
+
+            byte flags = 0;
+            // Optional flags byte before alignment
+            if (pos < tableData.Length && pos % 4 == 1)
+            {
+                flags = tableData[pos];
+                pos++;
+            }
+
+            int aligned = (pos + 3) & ~3;
+            if (aligned > tableData.Length)
+                throw new InvalidDataException($"THOR: BAD_TABLE truncated entry {index} {path}");
+            pos = aligned;
+
+            long dataPos = checked(header.DataOffset + (long)dataOffset);
+            long endPos = checked(dataPos + (long)compSize);
+            if (dataPos < header.DataOffset || endPos > header.FileTableOffset)
+                throw new InvalidDataException($"THOR: BAD_TABLE OOB entry {index} {path}");
+
+            entries.Add(new ThorEntry(path, flags, (uint)dataPos,
+                compSize, uncompSize, crc));
+
+            index++;
         }
 
-        if (entries.Count != header.FileCount)
-            throw new InvalidDataException("THOR: BAD_TABLE");
+        if (index != header.FileCount)
+            throw new InvalidDataException("THOR: BAD_TABLE count mismatch");
 
         return entries;
     }
@@ -259,8 +302,8 @@ public sealed class ThorArchive : IDisposable
         long FileTableSize, long FileTableOffset, long DataOffset, bool TableCompressed);
 
     /// <summary>Represents a file entry in the THOR archive.</summary>
-    public sealed record ThorEntry(string VirtualPath, byte Flags, int Offset,
-        int CompressedSize, int UncompressedSize, uint Crc)
+    public sealed record ThorEntry(string VirtualPath, byte Flags, uint Offset,
+        uint CompressedSize, uint UncompressedSize, uint Crc)
     {
         public ThorEntryKind Kind => (Flags & 0x01) == 0x01
             ? ThorEntryKind.Delete
