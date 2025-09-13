@@ -165,15 +165,20 @@
   <ItemGroup>
     <PackageReference Include="HtmlAgilityPack" Version="1.12.1" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
-    <PackageReference Include="SharpZipLib" Version="1.4.2" />
+    <PackageReference Include="SharpZipLib" Version="1.4.2" GeneratePathProperty="true" />
   </ItemGroup>
   <ItemGroup>
     <!-- Explicit reference to SharpZipLib to ensure availability during cross-platform builds -->
     <Reference Include="ICSharpCode.SharpZipLib">
-      <HintPath>$(NuGetPackageRoot)sharpziplib/1.4.2/lib/netstandard2.0/ICSharpCode.SharpZipLib.dll</HintPath>
-      <Private>True</Private>
-      <CopyLocal>True</CopyLocal>
+      <HintPath>$(PkgSharpZipLib)/lib/netstandard2.0/ICSharpCode.SharpZipLib.dll</HintPath>
+      <Private>False</Private>
+      <CopyLocal>False</CopyLocal>
     </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="$(PkgSharpZipLib)/lib/netstandard2.0/ICSharpCode.SharpZipLib.dll">
+      <LogicalName>RagnaPH.Libs.ICSharpCode.SharpZipLib.dll</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
