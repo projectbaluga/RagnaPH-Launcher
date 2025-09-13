@@ -104,12 +104,12 @@
     <Compile Include="Patching\PatchListParser.cs" />
     <Compile Include="Patching\PatchNameUtils.cs" />
     <Compile Include="Patching\PatchDownloader.cs" />
-    <Compile Include="Patching\ThorPatcher.cs" />
     <Compile Include="Patching\PatchStateStore.cs" />
     <Compile Include="Patching\JsonConvertShim.cs" />
     <Compile Include="Patching\MockGrfEditor.cs" />
     <Compile Include="Patching\RealGrfEditor.cs" />
-    <Compile Include="Patching\ThorReader.cs" />
+    <Compile Include="Patching\ThorArchive.cs" />
+    <Compile Include="Patching\ThorApplier.cs" />
     <Compile Include="IsExternalInit.cs" />
   </ItemGroup>
   <ItemGroup>

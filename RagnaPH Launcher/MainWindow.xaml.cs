@@ -167,7 +167,10 @@ namespace RagnaPHPatcher
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
-                            await ThorPatcher.ApplyPatchAsync(thorPath, grfPath);
+                            using var archive = ThorArchive.Open(thorPath);
+                            var config = new PatchingConfig("data.grf", InPlace: true, CheckIntegrity: true, CreateGrf: true, SkipBackup: true, EnforceFreeSpaceMB: 0);
+                            var applier = new ThorApplier(() => new RealGrfEditor(), config);
+                            await applier.ApplyAsync(archive, grfPath, CancellationToken.None);
                         }
                         catch (Exception ex)
                         {
@@ -298,7 +301,10 @@ namespace RagnaPHPatcher
                         try
                         {
                             string grfPath = Path.Combine(baseDir, "data.grf");
-                            await ThorPatcher.ApplyPatchAsync(thorPath, grfPath);
+                            using var archive = ThorArchive.Open(thorPath);
+                            var config = new PatchingConfig("data.grf", InPlace: true, CheckIntegrity: true, CreateGrf: true, SkipBackup: true, EnforceFreeSpaceMB: 0);
+                            var applier = new ThorApplier(() => new RealGrfEditor(), config);
+                            await applier.ApplyAsync(archive, grfPath, CancellationToken.None);
                         }
                         catch (Exception ex)
                         {

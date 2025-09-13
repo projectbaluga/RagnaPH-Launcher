@@ -16,18 +16,6 @@ public interface IPatchDownloader
     Task<string> DownloadAsync(PatchJob job, CancellationToken ct);
 }
 
-public interface IThorReader : IDisposable
-{
-    Task<ThorManifest> ReadManifestAsync(string thorPath, CancellationToken ct);
-    Task<IEnumerable<ThorEntry>> ReadEntriesAsync(string thorPath, CancellationToken ct);
-}
-
-public record ThorManifest(string? TargetGrf, bool IncludesChecksums);
-
-public record ThorEntry(string VirtualPath, ThorEntryKind Kind, long UncompressedSize, long CompressedSize, string? Sha256, Func<Task<Stream>> OpenStreamAsync);
-
-public enum ThorEntryKind { File, Delete, Directory }
-
 public interface IGrfEditor : IDisposable
 {
     Task OpenAsync(string grfPath, bool createIfMissing, CancellationToken ct);
