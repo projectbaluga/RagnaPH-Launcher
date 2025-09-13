@@ -111,6 +111,7 @@
     <Compile Include="Patching\MockGrfEditor.cs" />
     <Compile Include="Patching\RealGrfEditor.cs" />
     <Compile Include="Patching\ThorArchive.cs" />
+    <Compile Include="Patching\ThorReaderFix.cs" />
     <Compile Include="Patching\ThorApplier.cs" />
     <Compile Include="IsExternalInit.cs" />
   </ItemGroup>
@@ -166,6 +167,7 @@
     <PackageReference Include="HtmlAgilityPack" Version="1.12.1" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" />
     <PackageReference Include="SharpZipLib" Version="1.4.2" GeneratePathProperty="true" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
   </ItemGroup>
   <ItemGroup>
     <!-- Explicit reference to SharpZipLib to ensure availability during cross-platform builds -->
