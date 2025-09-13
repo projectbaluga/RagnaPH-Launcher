@@ -150,27 +150,17 @@ public sealed class ThorArchive : IDisposable
         long tableOffsetLong = tableOffset;
         long tableSizeLong = tableSize;
 
-        bool Valid(long off) => off >= headerEnd && off + tableSizeLong == fileLength;
-
-        if (!Valid(tableOffsetLong))
+        // GRFEditor assumes the file table is always at EOF. If the
+        // advertised offset/size don't line up, fall back to the strict
+        // "table at EOF" rule.
+        if (tableOffsetLong + tableSizeLong != fileLength)
         {
-            long rel = headerEnd + tableOffsetLong;
-            if (Valid(rel))
-            {
-                tableOffsetLong = rel;
-            }
-            else
-            {
-                long expected = fileLength - tableSizeLong;
-                if (Valid(expected))
-                {
-                    tableOffsetLong = expected;
-                }
-                else
-                {
-                    throw new InvalidDataException($"THOR: BAD_TABLE offset/size mismatch (offset {tableOffsetLong}, size {tableSizeLong}, length {fileLength})");
-                }
-            }
+            tableOffsetLong = fileLength - tableSizeLong;
+        }
+
+        if (tableOffsetLong < headerEnd || tableOffsetLong + tableSizeLong != fileLength)
+        {
+            throw new InvalidDataException($"THOR: BAD_TABLE offset/size mismatch (offset {tableOffsetLong}, size {tableSizeLong}, length {fileLength})");
         }
 
         return new Header(version, (int)fileCount, targetGrf, tableSizeLong, tableOffsetLong, headerEnd, tableCompressed);
@@ -233,15 +223,16 @@ public sealed class ThorArchive : IDisposable
             uint crc = BitConverter.ToUInt32(tableData, pos);
             pos += 4;
 
+            // Optional flags byte followed by 4-byte alignment. GRFEditor
+            // treats the first byte before alignment as flags regardless of
+            // whether it was intentionally written or not.
             byte flags = 0;
-            // Optional flags byte before alignment
-            if (pos < tableData.Length && pos % 4 == 1)
+            int aligned = (pos + 3) & ~3;
+            if (pos < tableData.Length && pos < aligned)
             {
                 flags = tableData[pos];
                 pos++;
             }
-
-            int aligned = (pos + 3) & ~3;
             if (aligned > tableData.Length)
                 throw new InvalidDataException($"THOR: BAD_TABLE truncated entry {index} {path}");
             pos = aligned;
@@ -260,16 +251,15 @@ public sealed class ThorArchive : IDisposable
 
         long[] candidates = new[] { 0L, header.HeaderEnd, tableEnd };
         long? dataBase = null;
+
+        // Prefer data before the table
         foreach (long b in candidates)
         {
             bool ok = true;
             foreach (var e in rawEntries)
             {
                 long start = checked(b + (long)e.Offset);
-                long end = checked(start + (long)e.CompressedSize);
-                bool before = start >= b && end <= tableOffset;
-                bool after = start >= tableEnd && end <= fileLength;
-                if (!before && !after)
+                if (start >= tableOffset)
                 {
                     ok = false;
                     break;
@@ -279,6 +269,29 @@ public sealed class ThorArchive : IDisposable
             {
                 dataBase = b;
                 break;
+            }
+        }
+
+        // If no base makes all entries fall before the table, try after-table
+        if (dataBase is null)
+        {
+            foreach (long b in candidates)
+            {
+                bool ok = true;
+                foreach (var e in rawEntries)
+                {
+                    long start = checked(b + (long)e.Offset);
+                    if (start < tableEnd || start >= fileLength)
+                    {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok)
+                {
+                    dataBase = b;
+                    break;
+                }
             }
         }
 
@@ -304,12 +317,12 @@ public sealed class ThorArchive : IDisposable
                 ? checked(baseOffset + (long)sorted[k + 1].Entry.Offset)
                 : (dataBeforeTable ? tableOffset : fileLength);
             long maxSpan = nextStart - start;
-            if (maxSpan <= 0)
-                throw new InvalidDataException($"THOR: BAD_TABLE OOB entry {idx} {entry.VirtualPath} start={start} next={nextStart} useSize={entry.CompressedSize}");
-
             uint useSize = entry.CompressedSize == 0 || entry.CompressedSize > maxSpan
                 ? checked((uint)maxSpan)
                 : entry.CompressedSize;
+
+            if (useSize <= 0)
+                throw new InvalidDataException($"THOR: BAD_TABLE truncated entry {idx} {entry.VirtualPath}");
 
             rawEntries[idx] = entry with { CompressedSize = useSize };
         }
