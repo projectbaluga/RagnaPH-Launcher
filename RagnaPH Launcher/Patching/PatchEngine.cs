@@ -15,7 +15,6 @@ public sealed class PatchEngine : IPatchEngine
     private readonly IPatchDownloader _downloader;
     private readonly PatchConfig _config;
     private readonly PatchStateStore _stateStore;
-    private readonly Func<IThorReader> _thorFactory;
     private readonly Func<IGrfEditor> _grfFactory;
 
     public event EventHandler<PatchProgressEventArgs>? Progress;
@@ -23,13 +22,11 @@ public sealed class PatchEngine : IPatchEngine
     public PatchEngine(IPatchDownloader downloader,
                        PatchConfig config,
                        PatchStateStore stateStore,
-                       Func<IThorReader> thorFactory,
                        Func<IGrfEditor> grfFactory)
     {
         _downloader = downloader;
         _config = config;
         _stateStore = stateStore;
-        _thorFactory = thorFactory;
         _grfFactory = grfFactory;
     }
 
@@ -65,37 +62,13 @@ public sealed class PatchEngine : IPatchEngine
         Report("download", job.Id, null, null);
         var path = await _downloader.DownloadAsync(job, ct);
 
-        using var thor = _thorFactory();
-        var manifest = await thor.ReadManifestAsync(path, ct);
+        using var archive = ThorArchive.Open(path);
+        var targetName = job.TargetGrf ?? archive.TargetGrf ?? _config.Patching.DefaultTargetGrf;
+        var grfPath = Path.Combine(_config.Paths.GameRoot, targetName);
 
-        var targetGrf = job.TargetGrf ?? manifest.TargetGrf ?? _config.Patching.DefaultTargetGrf;
-        var grfPath = Path.Combine(_config.Paths.GameRoot, targetGrf);
-
-        var merger = new GrfMerger(_grfFactory, _config.Patching);
-
-        await merger.MergeAsync(grfPath, async grf =>
-        {
-            var entries = await thor.ReadEntriesAsync(path, ct);
-            foreach (var entry in entries)
-            {
-                Report("apply", job.Id, null, null);
-                switch (entry.Kind)
-                {
-                    case ThorEntryKind.File:
-                        using (var stream = await entry.OpenStreamAsync())
-                        {
-                            await grf.AddOrReplaceAsync(entry.VirtualPath, stream, ct);
-                        }
-                        break;
-                    case ThorEntryKind.Delete:
-                        await grf.DeleteAsync(entry.VirtualPath, ct);
-                        break;
-                    case ThorEntryKind.Directory:
-                        // directories are implied in GRF
-                        break;
-                }
-            }
-        }, _config.Patching.CheckIntegrity && manifest.IncludesChecksums, ct);
+        var applier = new ThorApplier(_grfFactory, _config.Patching);
+        Report("apply", job.Id, null, null);
+        await applier.ApplyAsync(archive, grfPath, ct);
 
         state.AppliedIds.Add(job.Id);
         state = state with { LastAppliedId = Math.Max(state.LastAppliedId, job.Id) };

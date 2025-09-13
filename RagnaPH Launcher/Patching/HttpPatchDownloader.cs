@@ -47,8 +47,7 @@ public sealed class HttpPatchDownloader : IPatchDownloader
                     // Validate that the downloaded file is a real THOR archive.
                     try
                     {
-                        using var reader = new ThorReader();
-                        await reader.ReadManifestAsync(path, ct);
+                        using var archive = ThorArchive.Open(path);
                     }
                     catch (InvalidDataException ex)
                     {
