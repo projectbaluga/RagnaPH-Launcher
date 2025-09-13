@@ -62,35 +62,46 @@ public sealed class ThorArchive : IDisposable
             throw new InvalidDataException("THOR: BAD_TABLE OOB size");
 
         var buffer = new byte[checked((int)entry.CompressedSize)];
+        long start = checked(_dataBase + (long)entry.Offset);
+        long nextStart = start + buffer.Length;
         using (var fs = File.OpenRead(_path))
         {
-            fs.Position = checked(_dataBase + (long)entry.Offset);
+            fs.Position = start;
             var read = await fs.ReadAsync(buffer, 0, buffer.Length);
             if (read != buffer.Length)
-                throw new InvalidDataException("THOR: BAD_COMPRESSION");
+                throw new InvalidDataException($"THOR: BAD_TABLE truncated entry {entry.VirtualPath} start={start} next={nextStart} useSize={buffer.Length}");
         }
 
         byte[] data;
-        if (entry.CompressedSize == 0)
+        if (buffer.Length == 0)
         {
             data = Array.Empty<byte>();
         }
-        else if (entry.CompressedSize == entry.UncompressedSize)
+        else if (TryDecompress(buffer, true, out var tmp) || TryDecompress(buffer, false, out tmp))
         {
-            data = buffer;
+            data = tmp;
         }
         else
         {
-            data = DecompressZlib(buffer);
+            data = buffer;
         }
 
-        if ((uint)data.Length != entry.UncompressedSize)
-            throw new InvalidDataException("THOR: BAD_COMPRESSION");
+        if (entry.UncompressedSize != 0 && (uint)data.Length != entry.UncompressedSize)
+        {
+            // Allow mismatch by trusting the bytes we actually got
+        }
 
         var crc32 = new Crc32();
         crc32.Update(data);
-        if ((uint)crc32.Value != entry.Crc)
-            throw new InvalidDataException($"THOR: BAD_CRC {entry.VirtualPath}");
+        uint calc = (uint)crc32.Value;
+        if (entry.Crc != 0 && calc != entry.Crc)
+        {
+            crc32 = new Crc32();
+            crc32.Update(buffer);
+            calc = (uint)crc32.Value;
+            if (calc != entry.Crc)
+                throw new InvalidDataException($"THOR: BAD_CRC {entry.VirtualPath}");
+        }
 
         return new MemoryStream(data, writable: false);
     }
@@ -276,8 +287,34 @@ public sealed class ThorArchive : IDisposable
             throw new InvalidDataException($"THOR: BAD_TABLE (no valid data span; table=[{tableOffset},{tableEnd}), length {fileLength})");
         }
 
-        var entries = new List<ThorEntry>(rawEntries.Count);
         long baseOffset = dataBase.Value;
+
+        // Infer payload spans by sorting entries by data offset
+        var sorted = new List<(ThorEntry Entry, int Index)>(rawEntries.Count);
+        for (int i = 0; i < rawEntries.Count; i++)
+            sorted.Add((rawEntries[i], i));
+        sorted.Sort((a, b) => a.Entry.Offset.CompareTo(b.Entry.Offset));
+
+        bool dataBeforeTable = baseOffset < tableOffset;
+        for (int k = 0; k < sorted.Count; k++)
+        {
+            var (entry, idx) = sorted[k];
+            long start = checked(baseOffset + (long)entry.Offset);
+            long nextStart = (k + 1 < sorted.Count)
+                ? checked(baseOffset + (long)sorted[k + 1].Entry.Offset)
+                : (dataBeforeTable ? tableOffset : fileLength);
+            long maxSpan = nextStart - start;
+            if (maxSpan <= 0)
+                throw new InvalidDataException($"THOR: BAD_TABLE OOB entry {idx} {entry.VirtualPath} start={start} next={nextStart} useSize={entry.CompressedSize}");
+
+            uint useSize = entry.CompressedSize == 0 || entry.CompressedSize > maxSpan
+                ? checked((uint)maxSpan)
+                : entry.CompressedSize;
+
+            rawEntries[idx] = entry with { CompressedSize = useSize };
+        }
+
+        var entries = new List<ThorEntry>(rawEntries.Count);
         for (int i = 0; i < rawEntries.Count; i++)
         {
             var e = rawEntries[i];

@@ -133,6 +133,25 @@ public class ThorArchiveTests
     }
 
     [Fact]
+    public async Task ReadEntries_InferCompSize_Passes()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            CreateSimpleThor(path, "span.txt", "span", overrideCompSize: 0);
+            using var archive = ThorArchive.Open(path);
+            var entry = Assert.Single(archive.Entries);
+            using var stream = await archive.OpenEntryStreamAsync(entry);
+            using var sr = new StreamReader(stream);
+            Assert.Equal("span", await sr.ReadToEndAsync());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Open_TruncatedTable_Throws()
     {
         var path = Path.GetTempFileName();
@@ -152,7 +171,7 @@ public class ThorArchiveTests
         }
     }
 
-    private static void CreateSimpleThor(string path, string fileName, string content, bool corruptCrc = false, int? overrideTableOffset = null, bool lengthPrefixedPath = false, DataOffsetBase dataOffsetBase = DataOffsetBase.HeaderEnd)
+    private static void CreateSimpleThor(string path, string fileName, string content, bool corruptCrc = false, int? overrideTableOffset = null, bool lengthPrefixedPath = false, DataOffsetBase dataOffsetBase = DataOffsetBase.HeaderEnd, uint? overrideCompSize = null)
     {
         var fileData = Encoding.UTF8.GetBytes(content);
         var compressedFile = CompressZlib(fileData);
@@ -190,7 +209,7 @@ public class ThorArchiveTests
                     tableBw.Write(Encoding.UTF8.GetBytes(fileName));
                     tableBw.Write((byte)0); // NUL terminator
                 }
-                tableBw.Write((uint)compressedFile.Length); // compSize
+                tableBw.Write(overrideCompSize ?? (uint)compressedFile.Length); // compSize
                 tableBw.Write((uint)fileData.Length);       // uncompSize
                 tableBw.Write((uint)0);                     // dataOffset relative to table end
                 tableBw.Write(crc);                         // crc32
@@ -227,7 +246,7 @@ public class ThorArchiveTests
                 tableBw.Write(Encoding.UTF8.GetBytes(fileName));
                 tableBw.Write((byte)0); // NUL terminator
             }
-            tableBw.Write((uint)compressedFile.Length); // compSize
+            tableBw.Write(overrideCompSize ?? (uint)compressedFile.Length); // compSize
             tableBw.Write((uint)fileData.Length);       // uncompSize
             uint storedOffset = dataOffsetBase switch
             {
